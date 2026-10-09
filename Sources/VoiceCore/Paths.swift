@@ -24,6 +24,9 @@ public struct VoicePaths: Sendable {
     public var latestLink: URL { root.appendingPathComponent("latest") }
     public var defaultWhisperModel: URL { models.appendingPathComponent("ggml-large-v3-turbo-q5_0.bin") }
 
+    /// FluidAudio expects the directory to end in the model repo's folder name.
+    public var parakeetModels: URL { models.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true) }
+
     public func ensureDirectories() throws {
         for dir in [root, clips, sessions, models] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

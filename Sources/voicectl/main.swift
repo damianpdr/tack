@@ -3,7 +3,7 @@ import VoiceCore
 
 let usage = """
     usage:
-      voicectl transcribe <audio-file> [--engine openrouter|whisper] [--model M] [--whisper-model PATH]
+      voicectl transcribe <audio-file> [--engine openrouter|parakeet|whisper] [--model M] [--whisper-model PATH]
                           [--language xx] [--image SECONDS:PATH]... [--clip SECONDS:TEXT]...
       voicectl models
     """
@@ -43,6 +43,7 @@ func transcribe(_ arguments: [String]) async throws {
             switch try value(for: argument) {
             case "openrouter": settings.engine = .openRouter
             case "whisper": settings.engine = .whisperCpp
+            case "parakeet": settings.engine = .parakeet
             case let other: throw UsageError(message: "unknown engine \(other)")
             }
         case "--model":

@@ -140,13 +140,14 @@ private struct TranscriptionSettings: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Engine", selection: $model.settings.engine) {
-                    ForEach(EngineKind.allCases, id: \.self) { engine in
-                        Text(engine.title).tag(engine)
+            Section("Engine") {
+                ForEach(EngineKind.allCases, id: \.self) { engine in
+                    EngineOption(engine: engine, isSelected: model.settings.engine == engine) {
+                        model.settings.engine = engine
                     }
                 }
-                .pickerStyle(.radioGroup)
+            }
+            Section {
                 Picker("Language", selection: languageSelection) {
                     ForEach(Self.languages, id: \.code) { language in
                         Text(language.name).tag(language.code)
@@ -159,6 +160,7 @@ private struct TranscriptionSettings: View {
             }
             switch model.settings.engine {
             case .openRouter: openRouterSection
+            case .parakeet: ParakeetSection(model: model)
             case .whisperCpp: whisperSection
             }
             VocabularySection(model: model)
@@ -191,7 +193,12 @@ private struct TranscriptionSettings: View {
 
     private var openRouterSection: some View {
         Section("OpenRouter") {
-            SecureField("API key", text: $model.settings.openRouterAPIKey, prompt: Text("sk-or-…"))
+            LabeledContent("API key") {
+                SecureField("API key", text: $model.settings.openRouterAPIKey, prompt: Text("sk-or-…"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 300)
+            }
             HStack {
                 if model.settings.openRouterAPIKey.isEmpty, ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]?.isEmpty == false {
                     Text("Using OPENROUTER_API_KEY from the environment.")
@@ -316,6 +323,41 @@ private struct TranscriptionSettings: View {
     }
 }
 
+private struct EngineOption: View {
+    let engine: EngineKind
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            HStack(spacing: 12) {
+                Image(systemName: engine.symbol)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.07))
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(engine.title)
+                        .font(.system(size: 13, weight: .medium))
+                    Text(engine.subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.5))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 @MainActor @Observable
 private final class ModelDownload {
     static let shared = ModelDownload()
@@ -353,6 +395,77 @@ private final class ModelDownload {
         task?.cancel()
         task = nil
         progress = nil
+    }
+}
+
+private struct ParakeetSection: View {
+    @Bindable var model: AppModel
+    private let loader = ParakeetLoader.shared
+
+    var body: some View {
+        let downloaded = loader.ready || ParakeetEngine.isDownloaded(at: model.paths.parakeetModels)
+        Section {
+            if let progress = loader.progress {
+                HStack {
+                    ProgressView(value: progress)
+                    Text(progress < 1 ? "\(Int(progress * 100))%" : "Preparing…")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 70, alignment: .trailing)
+                }
+            } else if downloaded {
+                Label("Model ready: parakeet-tdt-0.6b-v3", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                HStack {
+                    Text("Download the model once (~470 MB). After that, everything runs on this Mac.")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Download") { loader.start(directory: model.paths.parakeetModels) }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            if let error = loader.error {
+                Label(error, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        } header: {
+            Text("Parakeet")
+        } footer: {
+            Text("NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0) via FluidAudio. Detects the language on its own; choosing one above only filters out other alphabets. Vocabulary hints are not used by this engine.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .font(.callout)
+    }
+}
+
+@MainActor @Observable
+private final class ParakeetLoader {
+    static let shared = ParakeetLoader()
+
+    private(set) var progress: Double?
+    private(set) var error: String?
+    private(set) var ready = false
+
+    func start(directory: URL) {
+        guard progress == nil else { return }
+        progress = 0
+        error = nil
+        Task {
+            do {
+                try await ParakeetEngine.prepare(at: directory) { value in
+                    Task { @MainActor in
+                        if ParakeetLoader.shared.progress != nil { ParakeetLoader.shared.progress = value }
+                    }
+                }
+                ready = true
+            } catch {
+                self.error = "Download failed: \(error.localizedDescription)"
+            }
+            progress = nil
+        }
     }
 }
 

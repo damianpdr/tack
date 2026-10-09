@@ -12,7 +12,7 @@ struct HistoryDetail: View {
         let isBusy = model.busyItemIDs.contains(item.id)
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     header(isBusy: isBusy)
                     bodyText(prompt: prompt)
                     images
@@ -20,21 +20,28 @@ struct HistoryDetail: View {
                     files
                     metadata
                 }
-                .padding(16)
+                .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
             actions(isBusy: isBusy)
                 .padding(12)
         }
+        .background(Color.primary.opacity(0.025))
     }
 
     private func header(isBusy: Bool) -> some View {
-        HStack(spacing: 8) {
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                Text(item.metaParts(now: context.date).joined(separator: " · "))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            KindBadge(item: item, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.kindStyle.name)
+                    .font(.system(size: 13, weight: .semibold))
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text(item.metaParts(now: context.date).dropFirst(item.kind == .image ? 0 : 1).joined(separator: " · "))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer()
             if isBusy {
@@ -57,7 +64,9 @@ struct HistoryDetail: View {
         }
         if !text.isEmpty {
             Text(text)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
+                .lineSpacing(3)
+                .foregroundStyle(item.isLink ? Color.accentColor : .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

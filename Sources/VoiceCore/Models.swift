@@ -34,12 +34,30 @@ public struct KeyCombo: Codable, Hashable, Sendable {
 
 public enum EngineKind: String, Codable, CaseIterable, Sendable {
     case openRouter
+    case parakeet
     case whisperCpp
 
     public var title: String {
         switch self {
         case .openRouter: "OpenRouter (cloud)"
+        case .parakeet: "Parakeet (local)"
         case .whisperCpp: "whisper.cpp (local)"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .openRouter: "Any OpenRouter transcription model. Needs an API key; audio leaves your Mac."
+        case .parakeet: "NVIDIA Parakeet v3 on the Neural Engine. Fast, private, 25 European languages."
+        case .whisperCpp: "OpenAI Whisper via whisper.cpp. Private, 99 languages, slower."
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .openRouter: "cloud"
+        case .parakeet: "bolt"
+        case .whisperCpp: "cpu"
         }
     }
 }

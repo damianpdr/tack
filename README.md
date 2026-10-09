@@ -49,6 +49,7 @@ cat ~/.voice/latest/prompt.md
 scripts/build-app.sh            # builds build/Voice.app
 scripts/build-app.sh --install  # also replaces /Applications/Voice.app
 scripts/test.sh                 # unit tests
+swift scripts/make-icon.swift   # regenerates Resources/AppIcon.icns
 ```
 
 macOS ties permissions to the app's signature. An ad-hoc signature changes on every build, so every rebuild loses its permissions. `build-app.sh` signs with the `Voice Local Signing` identity whenever it exists in the keychain. That identity is a self-signed code-signing certificate, created once like this:
@@ -96,6 +97,15 @@ Screenshots taken outside a recording go to the history. macOS's own screenshots
 - Add an API key in *Settings → Transcription*. For `voicectl` or a terminal-launched app you can instead export `OPENROUTER_API_KEY`.
 - Pick any of OpenRouter's transcription models. The default is `openai/gpt-4o-transcribe`.
 - Audio is split at the capture points, and each part is sent separately. This is how the markers land between sentences.
+
+### Parakeet (local)
+
+- In *Settings → Transcription*, choose *Parakeet (local)* and click *Download* (about 470 MB, saved to `~/.voice/models/parakeet-tdt-0.6b-v3/`).
+- Runs NVIDIA Parakeet TDT 0.6b v3 on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). A minute of speech takes about a second. The first transcription after a launch can take a few seconds more while CoreML loads the model.
+- Detects the language on its own across 25 European languages, including Polish. Choosing a language only keeps it from writing in another alphabet.
+- Like whisper.cpp, it transcribes the whole recording in one pass and places markers using word timestamps.
+- Vocabulary hints are not used.
+- The model is licensed CC-BY-4.0 by NVIDIA.
 
 ### whisper.cpp (local)
 
@@ -159,7 +169,7 @@ models/                              downloaded whisper models
 `voicectl` runs the same transcription pipeline on an existing audio file:
 
 ```sh
-swift run voicectl transcribe note.wav --engine whisper --language pl --image 4.2:shot.png --clip 9.0:"some text"
+swift run voicectl transcribe note.wav --engine parakeet --language pl --image 4.2:shot.png --clip 9.0:"some text"
 swift run voicectl models   # OpenRouter transcription models
 ```
 

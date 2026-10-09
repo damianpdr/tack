@@ -28,6 +28,7 @@ public enum TranscriptionError: LocalizedError, Equatable {
     case missingAPIKey
     case missingWhisperCLI
     case missingWhisperModel(String)
+    case missingParakeetModel
     case http(status: Int, message: String)
     case process(String)
     case invalidResponse(String)
@@ -40,6 +41,8 @@ public enum TranscriptionError: LocalizedError, Equatable {
             "whisper-cli not found. Install it with `brew install whisper-cpp` or set its path in Settings."
         case .missingWhisperModel(let path):
             "Whisper model not found at \(path). Download it in Settings."
+        case .missingParakeetModel:
+            "Parakeet model is not downloaded. Download it in Settings → Transcription."
         case .http(let status, let message):
             "OpenRouter error \(status): \(message)"
         case .process(let message):
@@ -53,13 +56,16 @@ public enum TranscriptionError: LocalizedError, Equatable {
 public struct OpenRouterEngine: TranscriptionEngine {
     static let endpoint = URL(string: "https://openrouter.ai/api/v1/audio/transcriptions")!
     static let maxConcurrentRequests = 4
+    static let maxRateLimitRetries = 4
 
     public let apiKey: String
     public let model: String
     public let vocabulary: [String]
     public let session: URLSession
 
-    public init(apiKey: String, model: String, vocabulary: [String] = [], session: URLSession = .shared) {
+    public init(
+        apiKey: String, model: String, vocabulary: [String] = [], session: URLSession = .shared
+    ) {
         self.apiKey = apiKey
         self.model = model
         self.vocabulary = vocabulary
@@ -88,7 +94,9 @@ public struct OpenRouterEngine: TranscriptionEngine {
             func enqueue() {
                 let index = next
                 next += 1
-                group.addTask { (index, try await transcribeOne(chunks[index], language: language)) }
+                group.addTask {
+                    (index, try await transcribeOne(chunks[index], language: language))
+                }
             }
             while next < min(chunks.count, Self.maxConcurrentRequests) { enqueue() }
             while let (index, text) = try await group.next() {
@@ -106,7 +114,9 @@ public struct OpenRouterEngine: TranscriptionEngine {
             "input_audio": ["data": audio.base64EncodedString(), "format": "wav"],
         ]
         if let language, !language.isEmpty { body["language"] = language }
-        if let options = Self.providerOptions(vocabulary: vocabulary) { body["provider"] = ["options": options] }
+        if let options = Self.providerOptions(vocabulary: vocabulary) {
+            body["provider"] = ["options": options]
+        }
 
         var request = URLRequest(url: Self.endpoint, timeoutInterval: 120)
         request.httpMethod = "POST"
@@ -115,12 +125,43 @@ public struct OpenRouterEngine: TranscriptionEngine {
         request.setValue("Voice", forHTTPHeaderField: "X-Title")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let error = json?["error"] as? [String: Any] {
+        var attempt = 0
+        while true {
+            let (data, response) = try await session.data(for: request)
+            let http = response as? HTTPURLResponse
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let error = json?["error"] as? [String: Any]
+            let status = (error?["code"] as? Int) ?? http?.statusCode ?? 0
+            if status == 429, attempt < Self.maxRateLimitRetries {
+                try await Task.sleep(
+                    for: .seconds(
+                        Self.rateLimitDelay(attempt: attempt, error: error, response: http)))
+                attempt += 1
+                continue
+            }
+            return try Self.parseTranscription(data: data, json: json, error: error, status: status)
+        }
+    }
+
+    /// Providers behind OpenRouter (e.g. Microsoft MAI) throttle concurrent chunk uploads with a 1s Retry-After;
+    /// jitter keeps the parallel chunks from colliding again on the retry.
+    static func rateLimitDelay(attempt: Int, error: [String: Any]?, response: HTTPURLResponse?)
+        -> Double
+    {
+        let metadata = error?["metadata"] as? [String: Any]
+        let retryAfter =
+            (metadata?["retry_after_seconds"] as? Double)
+            ?? response?.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+            ?? 1
+        return min(max(retryAfter, pow(2, Double(attempt))), 30) + Double.random(in: 0..<1)
+    }
+
+    private static func parseTranscription(
+        data: Data, json: [String: Any]?, error: [String: Any]?, status: Int
+    ) throws -> String {
+        if let error {
             let message = error["message"] as? String ?? String(decoding: data, as: UTF8.self)
-            throw TranscriptionError.http(status: (error["code"] as? Int) ?? status, message: message)
+            throw TranscriptionError.http(status: status, message: message)
         }
         guard (200..<300).contains(status) else {
             throw TranscriptionError.http(status: status, message: Self.snippet(data))
@@ -132,7 +173,8 @@ public struct OpenRouterEngine: TranscriptionEngine {
     }
 
     static func snippet(_ data: Data) -> String {
-        let text = String(decoding: data.prefix(500), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = String(decoding: data.prefix(500), as: UTF8.self).trimmingCharacters(
+            in: .whitespacesAndNewlines)
         return text.isEmpty ? "empty response" : text
     }
 }
@@ -159,7 +201,8 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
             let expanded = (trimmed as NSString).expandingTildeInPath
             if fm.isExecutableFile(atPath: expanded) { return expanded }
         }
-        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
+            .map(String.init)
         for dir in pathDirs + ["/opt/homebrew/bin", "/usr/local/bin"] {
             let candidate = (dir as NSString).appendingPathComponent("whisper-cli")
             if fm.isExecutableFile(atPath: candidate) { return candidate }
@@ -192,7 +235,8 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
         try? FileManager.default.removeItem(at: output)
         defer { try? FileManager.default.removeItem(at: output) }
 
-        var arguments = commonArguments(language: language) + ["-ml", "1", "-sow", "-ojf", "-of", base]
+        var arguments =
+            commonArguments(language: language) + ["-ml", "1", "-sow", "-ojf", "-of", base]
         if let preset = Self.dtwPreset(modelPath: modelPath) {
             arguments += ["-dtw", preset, "-nfa"]
         }
@@ -209,8 +253,10 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
         let name = URL(fileURLWithPath: modelPath).lastPathComponent.lowercased()
         guard !name.contains("distil") else { return nil }
         let presets: [(String, String)] = [
-            ("large-v3-turbo", "large.v3.turbo"), ("large-v3", "large.v3"), ("large-v2", "large.v2"), ("large-v1", "large.v1"),
-            ("medium.en", "medium.en"), ("medium", "medium"), ("small.en", "small.en"), ("small", "small"),
+            ("large-v3-turbo", "large.v3.turbo"), ("large-v3", "large.v3"),
+            ("large-v2", "large.v2"), ("large-v1", "large.v1"),
+            ("medium.en", "medium.en"), ("medium", "medium"), ("small.en", "small.en"),
+            ("small", "small"),
             ("base.en", "base.en"), ("base", "base"), ("tiny.en", "tiny.en"), ("tiny", "tiny"),
         ]
         return presets.first { name.contains("ggml-\($0.0)") }?.1
@@ -244,9 +290,14 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
             throw TranscriptionError.invalidResponse(OpenRouterEngine.snippet(data))
         }
         var words: [TimedWord] = []
-        for segment in json.transcription where !segment.text.trimmingCharacters(in: .whitespaces).isEmpty {
+        for segment in json.transcription
+        where !segment.text.trimmingCharacters(in: .whitespaces).isEmpty {
             let times = (segment.tokens ?? [])
-                .filter { !$0.text.hasPrefix("[_") && $0.text.unicodeScalars.contains(where: CharacterSet.alphanumerics.contains) }
+                .filter {
+                    !$0.text.hasPrefix("[_")
+                        && $0.text.unicodeScalars.contains(
+                            where: CharacterSet.alphanumerics.contains)
+                }
                 .map { token in
                     let dtw = token.t_dtw ?? -1
                     return dtw >= 0
@@ -259,7 +310,9 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
                 words[words.count - 1].text += segment.text
             } else {
                 let from = Double(segment.offsets.from) / 1000
-                words.append(TimedWord(text: segment.text, start: from, end: Double(segment.offsets.to) / 1000))
+                words.append(
+                    TimedWord(
+                        text: segment.text, start: from, end: Double(segment.offsets.to) / 1000))
             }
         }
         return words
@@ -267,15 +320,21 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
 
     private func commonArguments(language: String?) -> [String] {
         let threads = min(8, ProcessInfo.processInfo.activeProcessorCount)
-        var arguments = ["-m", modelPath, "-l", (language?.isEmpty ?? true) ? "auto" : language!, "-np", "-t", String(threads)]
+        var arguments = [
+            "-m", modelPath, "-l", (language?.isEmpty ?? true) ? "auto" : language!, "-np", "-t",
+            String(threads),
+        ]
         if !vocabulary.isEmpty { arguments += ["--prompt", vocabulary.joined(separator: ", ")] }
         return arguments
     }
 
     private func run(_ arguments: [String]) async throws {
         let fm = FileManager.default
-        let log = fm.temporaryDirectory.appendingPathComponent("voice-whisper-\(UUID().uuidString).log")
-        guard fm.createFile(atPath: log.path, contents: nil), let logHandle = try? FileHandle(forWritingTo: log) else {
+        let log = fm.temporaryDirectory.appendingPathComponent(
+            "voice-whisper-\(UUID().uuidString).log")
+        guard fm.createFile(atPath: log.path, contents: nil),
+            let logHandle = try? FileHandle(forWritingTo: log)
+        else {
             throw TranscriptionError.process("cannot create log file at \(log.path)")
         }
         defer {
@@ -292,12 +351,16 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
 
         let status: Int32 = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
+                process.terminationHandler = {
+                    continuation.resume(returning: $0.terminationStatus)
+                }
                 do {
                     try process.run()
                 } catch {
                     process.terminationHandler = nil
-                    continuation.resume(throwing: TranscriptionError.process("cannot launch \(cliPath): \(error.localizedDescription)"))
+                    continuation.resume(
+                        throwing: TranscriptionError.process(
+                            "cannot launch \(cliPath): \(error.localizedDescription)"))
                 }
             }
         } onCancel: {
@@ -308,8 +371,12 @@ public struct WhisperCppEngine: TimedTranscriptionEngine {
         guard status == 0 else {
             let stderr = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
             let lines = stderr.split(separator: "\n")
-            let errorLines = lines.filter { $0.localizedCaseInsensitiveContains("error") || $0.localizedCaseInsensitiveContains("failed") }
-            let detail = (errorLines.isEmpty ? lines.suffix(15) : errorLines.suffix(5)).joined(separator: "\n")
+            let errorLines = lines.filter {
+                $0.localizedCaseInsensitiveContains("error")
+                    || $0.localizedCaseInsensitiveContains("failed")
+            }
+            let detail = (errorLines.isEmpty ? lines.suffix(15) : errorLines.suffix(5)).joined(
+                separator: "\n")
             throw TranscriptionError.process("exit code \(status)\n\(detail)")
         }
     }
@@ -324,18 +391,33 @@ public enum Transcriber {
         switch settings.engine {
         case .openRouter:
             var key = settings.openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if key.isEmpty { key = (environment["OPENROUTER_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+            if key.isEmpty {
+                key = (environment["OPENROUTER_API_KEY"] ?? "").trimmingCharacters(
+                    in: .whitespacesAndNewlines)
+            }
             guard !key.isEmpty else { throw TranscriptionError.missingAPIKey }
             let model = settings.openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
-            return OpenRouterEngine(apiKey: key, model: model.isEmpty ? Settings().openRouterModel : model, vocabulary: settings.vocabulary)
+            return OpenRouterEngine(
+                apiKey: key, model: model.isEmpty ? Settings().openRouterModel : model,
+                vocabulary: settings.vocabulary)
         case .whisperCpp:
             guard let cli = WhisperCppEngine.detectCLI(preferred: settings.whisperCLIPath) else {
                 throw TranscriptionError.missingWhisperCLI
             }
-            let configured = settings.whisperModelPath.trimmingCharacters(in: .whitespacesAndNewlines)
-            let model = configured.isEmpty ? paths.defaultWhisperModel.path : (configured as NSString).expandingTildeInPath
-            guard FileManager.default.fileExists(atPath: model) else { throw TranscriptionError.missingWhisperModel(model) }
+            let configured = settings.whisperModelPath.trimmingCharacters(
+                in: .whitespacesAndNewlines)
+            let model =
+                configured.isEmpty
+                ? paths.defaultWhisperModel.path : (configured as NSString).expandingTildeInPath
+            guard FileManager.default.fileExists(atPath: model) else {
+                throw TranscriptionError.missingWhisperModel(model)
+            }
             return WhisperCppEngine(cliPath: cli, modelPath: model, vocabulary: settings.vocabulary)
+        case .parakeet:
+            guard ParakeetEngine.isDownloaded(at: paths.parakeetModels) else {
+                throw TranscriptionError.missingParakeetModel
+            }
+            return ParakeetEngine(modelDirectory: paths.parakeetModels)
         }
     }
 
@@ -348,22 +430,26 @@ public enum Transcriber {
     ) async throws -> [PromptBlock] {
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         if let timed = engine as? TimedTranscriptionEngine {
-            return try await transcribeTimed(audio: audio, events: events, engine: timed, language: language, workDir: workDir)
+            return try await transcribeTimed(
+                audio: audio, events: events, engine: timed, language: language, workDir: workDir)
         }
         let plan = ChunkPlanner.plan(audio: audio, events: events)
 
         var chunkURLs: [URL] = []
         for item in plan {
             guard case .audio(let range, silent: false) = item else { continue }
-            let url = workDir.appendingPathComponent(String(format: "chunk-%03d.wav", chunkURLs.count))
+            let url = workDir.appendingPathComponent(
+                String(format: "chunk-%03d.wav", chunkURLs.count))
             try WAVFile.write(audio.samples[range], to: url)
             chunkURLs.append(url)
         }
         defer { for url in chunkURLs { try? FileManager.default.removeItem(at: url) } }
 
-        let texts = chunkURLs.isEmpty ? [] : try await engine.transcribe(chunkURLs, language: language)
+        let texts =
+            chunkURLs.isEmpty ? [] : try await engine.transcribe(chunkURLs, language: language)
         guard texts.count == chunkURLs.count else {
-            throw TranscriptionError.invalidResponse("expected \(chunkURLs.count) transcripts, got \(texts.count)")
+            throw TranscriptionError.invalidResponse(
+                "expected \(chunkURLs.count) transcripts, got \(texts.count)")
         }
 
         var blocks: [PromptBlock] = []
@@ -417,9 +503,14 @@ public enum Transcriber {
     /// Interleaves events with timed words. Each event goes into the widest inter-word gap within `snapWindow`
     /// of its offset (ties: closest), else before the first word whose midpoint is at or after it.
     /// Events never move before an earlier event; text between events is cleaned like chunk results.
-    public static func place(words: [TimedWord], events: [CaptureEvent], snapWindow: TimeInterval = 0.6) -> [PromptBlock] {
+    public static func place(
+        words: [TimedWord], events: [CaptureEvent], snapWindow: TimeInterval = 0.6
+    ) -> [PromptBlock] {
         let sorted = events.enumerated()
-            .sorted { $0.element.offset == $1.element.offset ? $0.offset < $1.offset : $0.element.offset < $1.element.offset }
+            .sorted {
+                $0.element.offset == $1.element.offset
+                    ? $0.offset < $1.offset : $0.element.offset < $1.element.offset
+            }
             .map(\.element)
         var slots = [[CaptureEvent]](repeating: [], count: words.count + 1)
         var earliest = 0
@@ -452,7 +543,9 @@ public enum Transcriber {
     }
 
     /// Index of the word the event goes before; `words.count` means after all words.
-    private static func slot(for offset: TimeInterval, words: [TimedWord], snapWindow: TimeInterval) -> Int {
+    private static func slot(for offset: TimeInterval, words: [TimedWord], snapWindow: TimeInterval)
+        -> Int
+    {
         guard let first = words.first, let last = words.last, offset > first.start else { return 0 }
         guard offset < last.end else { return words.count }
         var best: (slot: Int, width: TimeInterval, distance: TimeInterval)?
@@ -462,7 +555,9 @@ public enum Transcriber {
             let distance = max(0, lower - offset, offset - upper)
             guard distance <= snapWindow else { continue }
             let width = upper - lower
-            if best == nil || width > best!.width || (width == best!.width && distance < best!.distance) {
+            if best == nil || width > best!.width
+                || (width == best!.width && distance < best!.distance)
+            {
                 best = (slot, width, distance)
             }
         }
@@ -478,8 +573,10 @@ public enum Transcriber {
         }
     }
 
-    private static let tagPattern = try! NSRegularExpression(pattern: #"\[\s*[A-Z][A-Z0-9_ ]*\s*\]"#)
-    private static let parentheticalPattern = try! NSRegularExpression(pattern: #"\(\s*\p{L}+(?:\s+\p{L}+){0,3}\s*\)"#)
+    private static let tagPattern = try! NSRegularExpression(
+        pattern: #"\[\s*[A-Z][A-Z0-9_ ]*\s*\]"#)
+    private static let parentheticalPattern = try! NSRegularExpression(
+        pattern: #"\(\s*\p{L}+(?:\s+\p{L}+){0,3}\s*\)"#)
     private static let whitespacePattern = try! NSRegularExpression(pattern: #"\s+"#)
     private static let hallucinations: Set<String> = [
         "thank you",
@@ -498,11 +595,15 @@ public enum Transcriber {
     static func clean(_ raw: String) -> String {
         var text = raw
         for pattern in [tagPattern, parentheticalPattern] {
-            text = pattern.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
+            text = pattern.stringByReplacingMatches(
+                in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
         }
-        text = whitespacePattern.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized = text.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".!?,…").union(.whitespaces))
+        text = whitespacePattern.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " "
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = text.lowercased().trimmingCharacters(
+            in: CharacterSet(charactersIn: ".!?,…").union(.whitespaces))
         return hallucinations.contains(normalized) ? "" : text
     }
 }

@@ -47,6 +47,8 @@ final class WindowManager {
             defer: false
         )
         window.title = "Voice"
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.contentViewController = controller
         window.setContentSize(NSSize(width: 960, height: 720))
         window.contentMinSize = NSSize(width: 560, height: 360)

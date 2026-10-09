@@ -60,13 +60,15 @@ struct HistoryView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search history (/)", text: $state.query)
+                TextField("Search history", text: $state.query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
-                if !state.query.isEmpty {
+                if state.query.isEmpty {
+                    KeyCap("/")
+                } else {
                     Button {
                         state.query = ""
                     } label: {
@@ -76,26 +78,32 @@ struct HistoryView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
             )
-            .frame(maxWidth: 380)
+            .frame(maxWidth: 420)
             Spacer(minLength: 8)
-            recordButton
             engineMenu
+            recordButton
             Button {
                 model.showSettings()
             } label: {
                 Image(systemName: "gearshape")
+                    .font(.system(size: 14))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .help("Settings")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -105,33 +113,43 @@ struct HistoryView: View {
             Button {
                 model.toggleRecording()
             } label: {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
+                HStack(spacing: 7) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 10))
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         Text(HistoryFormat.duration(context.date.timeIntervalSince(recordingStart ?? context.date)))
                             .monospacedDigit()
                     }
-                    Text("Stop")
                 }
+                .capsuleLabel(fill: .red, foreground: .white)
             }
+            .buttonStyle(.plain)
             .help("Stop recording")
         case .processing:
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 ProgressView()
-                    .controlSize(.small)
+                    .controlSize(.mini)
                 Text("Transcribing…")
-                    .foregroundStyle(.secondary)
             }
-            .font(.system(size: 12))
+            .capsuleLabel(fill: Color.primary.opacity(0.08), foreground: .secondary)
         default:
             Button {
                 model.toggleRecording()
             } label: {
-                Label("Record", systemImage: "mic.fill")
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                    Text("Record")
+                    if let combo = model.settings.hotkeys[.toggleRecording]?.displayString {
+                        Text(combo)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .capsuleLabel(fill: Color.primary.opacity(0.08), foreground: .primary)
             }
-            .help("Start recording (\(model.settings.hotkeys[.toggleRecording]?.displayString ?? ""))")
+            .buttonStyle(.plain)
+            .help("Start recording")
         }
     }
 
@@ -139,27 +157,30 @@ struct HistoryView: View {
         Menu {
             Picker("Engine", selection: Binding(get: { model.settings.engine }, set: { model.settings.engine = $0 })) {
                 ForEach(EngineKind.allCases, id: \.self) { engine in
-                    Text(engine.title).tag(engine)
+                    Label(engine.title, systemImage: engine.symbol).tag(engine)
                 }
             }
             .pickerStyle(.inline)
             Divider()
-            Button("Transcription Settings…") { model.showSettings() }
+            Button("Transcription Settings…") { model.showSettings(tab: .transcription) }
         } label: {
-            Text(engineLabel)
+            Label(engineLabel, systemImage: model.settings.engine.symbol)
                 .font(.system(size: 12))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .help("Transcription engine")
     }
 
     private var engineLabel: String {
         switch model.settings.engine {
         case .openRouter:
             let name = model.settings.openRouterModel.split(separator: "/").last.map(String.init) ?? ""
-            return name.isEmpty ? "Cloud" : "Cloud · \(name)"
+            return name.isEmpty ? "Cloud" : name
         case .whisperCpp:
-            return "Local · whisper"
+            return "Whisper"
+        case .parakeet:
+            return "Parakeet"
         }
     }
 
@@ -174,7 +195,7 @@ struct HistoryView: View {
         .font(.system(size: 12))
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.purple.opacity(0.12))
+        .background(Color.accentColor.opacity(0.14))
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -203,7 +224,7 @@ struct HistoryView: View {
     private func list(items: [HistoryItem], cursorID: UUID) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 2) {
                     ForEach(items) { item in
                         HistoryRow(
                             item: item,
@@ -211,14 +232,12 @@ struct HistoryView: View {
                             isCursor: item.id == cursorID,
                             isBusy: model.busyItemIDs.contains(item.id)
                         )
-                        .overlay(alignment: .bottom) {
-                            Divider().opacity(0.6)
-                        }
                         .id(item.id)
                         .onTapGesture { state.click(item) }
                         .contextMenu { contextMenu(for: item) }
                     }
                 }
+                .padding(.vertical, 6)
             }
             .onChange(of: state.scrollRequest) {
                 if let id = state.cursorID ?? items.first?.id { proxy.scrollTo(id) }
@@ -247,9 +266,9 @@ struct HistoryView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             if state.query.isEmpty {
-                Image(systemName: "waveform")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.secondary)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 72, height: 72)
                 Text("Nothing here yet")
                     .font(.headline)
                 VStack(alignment: .leading, spacing: 4) {
@@ -272,15 +291,8 @@ struct HistoryView: View {
 
     private func hint(_ action: HotkeyAction, _ text: String) -> some View {
         HStack(spacing: 8) {
-            Text(model.settings.hotkeys[action]?.displayString ?? "—")
-                .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+            KeyCap(model.settings.hotkeys[action]?.displayString ?? "—")
                 .frame(minWidth: 52)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary.opacity(0.08))
-                )
             Text(text)
                 .font(.system(size: 12))
         }
@@ -540,6 +552,37 @@ final class HistoryState {
             return event
         }
         return nil
+    }
+}
+
+struct KeyCap: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .frame(minWidth: 18, minHeight: 18)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+            )
+    }
+}
+
+private extension View {
+    func capsuleLabel(fill: Color, foreground: Color) -> some View {
+        font(.system(size: 12, weight: .medium))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(Capsule().fill(fill))
+            .contentShape(Capsule())
     }
 }
 

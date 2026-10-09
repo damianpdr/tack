@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import VoiceCore
 
 extension HistoryItem {
@@ -43,9 +44,9 @@ extension HistoryItem {
         case .image:
             parts.append(imageLabel)
         case .text:
-            parts.append("Text")
+            parts.append(isLink ? "Link" : "Text")
             if let sourceApp { parts.append(sourceApp) }
-            parts.append(HistoryFormat.count(HistoryFormat.wordCount(text), "word"))
+            if !isLink { parts.append(HistoryFormat.count(HistoryFormat.wordCount(text), "word")) }
         case .file:
             parts.append("File")
             if let sourceApp { parts.append(sourceApp) }
@@ -118,5 +119,31 @@ enum HistoryFormat {
 
     static func wordCount(_ text: String) -> Int {
         text.split { $0.isWhitespace || $0.isNewline }.count
+    }
+}
+
+struct KindStyle {
+    let name: String
+    let symbol: String
+    let tint: Color
+}
+
+extension HistoryItem {
+    var isLink: Bool {
+        guard kind == .text else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.contains(where: \.isWhitespace)
+            && (trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://"))
+    }
+
+    var kindStyle: KindStyle {
+        switch kind {
+        case .session where hasAudio: KindStyle(name: "Voice prompt", symbol: "waveform", tint: .orange)
+        case .session: KindStyle(name: "Stack", symbol: "square.stack.3d.up.fill", tint: .purple)
+        case .image: KindStyle(name: "Image", symbol: "photo.fill", tint: .blue)
+        case .file: KindStyle(name: "File", symbol: "doc.fill", tint: .yellow)
+        case .text where isLink: KindStyle(name: "Link", symbol: "link", tint: .teal)
+        case .text: KindStyle(name: "Text", symbol: "text.alignleft", tint: .green)
+        }
     }
 }

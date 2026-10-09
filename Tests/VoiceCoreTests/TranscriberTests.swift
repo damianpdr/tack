@@ -148,3 +148,19 @@ struct TranscriberTests {
         #expect(blocks == [.clip("a"), .clip("b")])
     }
 }
+
+@Suite struct ParakeetWordsTests {
+    @Test func joinsSentencePiecesIntoWords() {
+        let words = ParakeetEngine.words(from: [
+            (" H", 0.0, 0.08), ("ello", 0.08, 0.32), (" wor", 0.48, 0.64), ("ld", 0.64, 0.8), (",", 0.8, 0.88),
+        ])
+        #expect(words == [
+            TimedWord(text: " Hello", start: 0.0, end: 0.32),
+            TimedWord(text: " world,", start: 0.48, end: 0.88),
+        ])
+    }
+
+    @Test func firstTokenWithoutSpaceStartsAWord() {
+        #expect(ParakeetEngine.words(from: [("ok", 0, 0.1)]) == [TimedWord(text: " ok", start: 0, end: 0.1)])
+    }
+}
