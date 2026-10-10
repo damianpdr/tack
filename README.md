@@ -1,16 +1,81 @@
-# Tack
+<p align="center">
+  <img src="Resources/AppIcon.png" width="128" height="128" alt="Tack app icon">
+</p>
 
-**Talk. Tack screenshots in. Paste into your agent.**
+<h1 align="center">Tack</h1>
 
-A small native macOS app that turns what you say, plus the screenshots and copies you make while saying it, into one prompt for AI agents (Claude Code, Codex, Cursor, terminals) or any other app. Transcription runs on your Mac by default.
+<p align="center">
+  <b>Talk. Tack screenshots in. Paste into your agent.</b>
+</p>
 
-1. Press `⌃⌥R`. A black pill with a live waveform appears at the bottom of the screen.
-2. Talk. Take screenshots with `⌃⌥4` (region) or `⌃⌥3` (screen), or copy text, images and files. Each capture flies from where you took it into the pill, and its `figure N` marker appears in the live transcript where you said it.
-3. Press `⌃⌥R` again. Tack transcribes the audio, puts `[figure N]` / `[clip N]` / `[file N]` markers where the captures happened, and pastes the result into the frontmost app. The same text also stays on the clipboard.
+<p align="center">
+  A native macOS app that turns what you say, plus the screenshots and copies you make while saying it,<br>
+  into one prompt for Claude Code, Codex, Cursor, a terminal or any other app. Transcription runs on your Mac.
+</p>
+
+<p align="center">
+  <a href="https://github.com/damianpdr/tack/releases/latest"><img src="https://img.shields.io/badge/download-DMG-ff6b4a?style=flat-square" alt="Download the DMG"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-0a84ff?style=flat-square&logo=apple" alt="macOS 14 or later">
+  <img src="https://img.shields.io/badge/Apple%20Silicon-native-0a84ff?style=flat-square" alt="Apple Silicon">
+  <img src="https://img.shields.io/badge/notarized-Developer%20ID-2ea44f?style=flat-square" alt="Notarized by Apple">
+  <img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6.2">
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#output-format">Output</a> ·
+  <a href="#hotkeys">Hotkeys</a> ·
+  <a href="#transcription">Transcription</a> ·
+  <a href="#history">History</a> ·
+  <a href="#privacy-and-data">Privacy</a> ·
+  <a href="#development">Development</a>
+</p>
+
+<p align="center">
+  <img src="docs/hero.png" width="860" alt="The Tack pill mid-recording with a figure marker and a screenshot thumbnail, above the prompt it pastes into a terminal">
+</p>
+
+## Highlights
+
+- **One prompt from voice and pictures.** Screenshots, copied text and files land in the transcript exactly where you mentioned them, as `[figure N]`, `[clip N]` and `[file N]`.
+- **Private by default.** NVIDIA Parakeet runs on the Neural Engine. A minute of speech takes about a second, and nothing leaves your Mac.
+- **Pastes the right thing.** Terminals and coding agents get markdown with absolute image paths; every other app gets real images followed by the text.
+- **Stays out of the way.** A small pill at the bottom of the screen, global hotkeys, tap or hold to talk, and `Esc` to throw it away.
+- **Expressive or Minimal.** A warm glow, flying captures and soft sounds, or white bars and quiet fades. You choose in Settings.
+- **Searchable history.** Every prompt and screenshot, with keyboard navigation, re-transcription and stacking several items into one prompt.
+
+## Install
+
+1. Download `Tack-<version>.dmg` from the [latest release](https://github.com/damianpdr/tack/releases/latest).
+2. Open it and drag **Tack** to **Applications**.
+3. Launch Tack and grant the permissions it asks for:
+   - **Microphone**: recording.
+   - **Accessibility**: pasting with ⌘V into other apps. Without it, the prompt is only copied.
+   - **Screen Recording**: Tack's screenshot hotkeys.
+4. In *Settings → Transcription*, click *Download* to fetch the Parakeet model (about 470 MB, once).
+
+Requires macOS 14 or later on Apple Silicon. Releases are signed with a Developer ID and notarized by Apple. Tack checks GitHub Releases for a new version once a day, and on demand from *Check for Updates…* in its menu.
+
+## How it works
+
+1. **Press `⌃⌥R`.** A black pill with a live waveform appears at the bottom of the screen.
+2. **Talk.** Take screenshots with `⌃⌥4` (region) or `⌃⌥3` (screen), or copy text, images and files. Each capture flies from where you took it into the pill, and its `figure N` marker appears in the live transcript where you said it.
+3. **Press `⌃⌥R` again.** Tack transcribes the audio, puts `[figure N]` / `[clip N]` / `[file N]` markers where the captures happened, and pastes the result into the frontmost app. The same text also stays on the clipboard.
 
 Or hold `⌃⌥R` while you talk and let go to finish; the pill gets a warm rim while you hold. `Esc` or the pill's `×` cancels the recording and discards it.
 
-Short sounds mark the start, each capture and the delivery; turn them off with *Settings → General → Play sounds*. If the pill is too much, pick *Minimal* under *Settings → General → Pill*: white bars, no glow, nothing flying, and no sounds unless you turn them back on. With *Reduce motion* on in macOS, captures and prompts don't fly.
+### Pill style
+
+*Settings → General → Pill* offers two styles:
+
+| Expressive (default) | Minimal |
+| --- | --- |
+| Warm gradient bars and a glow that breathes with your voice | White bars, no glow |
+| Captures fly into the pill; the prompt is thrown to your cursor | Plain fades, nothing flies |
+| Soft sounds for start, each capture and delivery | No sounds, unless you turn *Play sounds* back on |
+
+With *Reduce motion* on in macOS, captures and prompts never fly, whichever style you pick.
 
 ## Output format
 
@@ -44,49 +109,6 @@ Tack always leaves the markdown on the clipboard afterwards. Agents can also rea
 cat ~/.tack/latest/prompt.md
 ```
 
-## Requirements and install
-
-- macOS 14 or later.
-
-Download `Tack-<version>.dmg` from the [latest release](https://github.com/damianpdr/tack/releases/latest), open it and drag Tack to Applications.
-
-Tack is not notarized by Apple yet, so the first open takes one extra step: macOS says it "cannot be opened because the developer cannot be verified". Click *Done*, then open *System Settings → Privacy & Security*, scroll to the message about Tack and click *Open Anyway*. Every later launch is normal. Tack also checks GitHub Releases for a new version once a day, and on demand from *Check for Updates…* in its menu.
-
-### Building from source
-
-- Swift 6.2 or newer. The Command Line Tools are enough; Xcode is not required.
-
-```sh
-scripts/build-app.sh            # builds build/Tack.app
-scripts/build-app.sh --install  # also replaces /Applications/Tack.app
-scripts/test.sh                 # unit tests
-swift scripts/make-icon.swift   # regenerates Resources/AppIcon.icns
-```
-
-macOS ties permissions to the app's signature. An ad-hoc signature changes on every build, so every rebuild loses its permissions. `build-app.sh` signs with the `Tack Local Signing` identity whenever it exists in the keychain. That identity is a self-signed code-signing certificate, created once like this:
-
-```sh
-cd "$(mktemp -d)"
-printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=Tack Local Signing\n[ext]\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n' > cfg
-/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 -config cfg
-/usr/bin/openssl pkcs12 -export -inkey key.pem -in cert.pem -out id.p12 -passout pass:voice -name "Tack Local Signing"
-security import id.p12 -k ~/Library/Keychains/login.keychain-db -P voice -T /usr/bin/codesign
-```
-
-You can also sign with any other identity:
-
-```sh
-TACK_SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh --install
-```
-
-### Permissions
-
-If any are missing, Tack opens *Settings → Permissions* on launch; click *Grant…* next to each one:
-
-- **Microphone**: recording.
-- **Accessibility**: pasting with ⌘V into other apps. Without it, the prompt is only copied.
-- **Screen Recording**: Tack's screenshot hotkeys.
-
 ## Hotkeys
 
 | Default | Action |
@@ -111,7 +133,6 @@ Screenshots taken outside a recording go to the history. macOS's own screenshots
 - Transcribes the whole recording in one pass and places markers using word timestamps.
 - *Show live transcript in the pill* (on by default) shows the last words you said while recording.
 - Vocabulary hints are not used.
-- The model is licensed CC-BY-4.0 by NVIDIA.
 
 ### OpenRouter (cloud)
 
@@ -121,9 +142,7 @@ Screenshots taken outside a recording go to the history. macOS's own screenshots
 
 ### Vocabulary
 
-In *Settings → Transcription → Vocabulary*, add project names, components and jargon, e.g. `Supabase`, `Kubernetes`, `useEffect`. Type a term and press Return, or paste a comma-separated list to add many at once. The list is sent as a hint:
-
-- OpenRouter: `provider.options`. Microsoft MAI gets a `phraseList`; OpenAI and Groq get a `prompt`. Other providers get no hint.
+In *Settings → Transcription → Vocabulary*, add project names, components and jargon, e.g. `Supabase`, `Kubernetes`, `useEffect`. Type a term and press Return, or paste a comma-separated list to add many at once. The list is sent to OpenRouter as a hint in `provider.options`: Microsoft MAI gets a `phraseList`; OpenAI and Groq get a `prompt`. Other providers get no hint.
 
 In our tests, MAI-Transcribe 2 spelled every listed term correctly with the hint, and mangled camelCase identifiers into separate words without it. Parakeet does not use the list yet.
 
@@ -150,14 +169,17 @@ The header shows how much typing your voice notes replaced, at 40 words per minu
 
 *Re-transcribe*, in the detail pane or the context menu, runs a voice item again with the engine currently selected in the toolbar picker. Use it after switching engines or when a transcription failed.
 
-While recording, Tack skips clipboard items that password managers mark as concealed or transient.
+## Privacy and data
 
-## Data
+- With Parakeet, audio and transcripts never leave your Mac. With OpenRouter, the recorded audio is sent to OpenRouter for transcription.
+- Other network requests: the one-time Parakeet model download, OpenRouter's model list when you pick an OpenRouter model, and the daily update check against the GitHub Releases API.
+- While recording, Tack skips clipboard items that password managers mark as concealed or transient.
+- The OpenRouter key lives in the macOS keychain, not in a file.
 
-Everything is stored in `~/.tack`. Set `TACK_HOME` to use a different folder.
+Everything else is stored in `~/.tack`. Set `TACK_HOME` to use a different folder.
 
 ```
-settings.json                        everything except the OpenRouter key, which is in the keychain
+settings.json                        everything except the OpenRouter key
 history.sqlite
 clips/                               screenshots taken outside recordings
 sessions/<yyyy-MM-dd_HH-mm-ss>/      audio.wav, figure-N.png, prompt.md, transcript.txt, session.json,
@@ -166,7 +188,50 @@ latest -> sessions/…                 the most recent prompt
 models/                              the downloaded Parakeet model
 ```
 
-## CLI
+## Known limitations
+
+- A macOS screenshot whose floating thumbnail is still on screen when you stop recording is not included. Stop after the thumbnail disappears, or turn the thumbnail off in ⌘⇧5 → Options.
+- Changing the input device in the middle of a recording ends the recording.
+- The pill ignores clicks while a recording is being transcribed.
+
+## Development
+
+Requires Swift 6.2 or newer. The Command Line Tools are enough; Xcode is not required.
+
+```sh
+scripts/build-app.sh            # builds build/Tack.app
+scripts/build-app.sh --install  # also replaces /Applications/Tack.app
+scripts/test.sh                 # unit tests
+swift scripts/make-icon.swift   # regenerates Resources/AppIcon.icns
+```
+
+<details>
+<summary><b>Local code signing</b> (keeps permissions across rebuilds)</summary>
+
+<br>
+
+macOS ties permissions to the app's signature. An ad-hoc signature changes on every build, so every rebuild loses its permissions. `build-app.sh` signs with the `Tack Local Signing` identity whenever it exists in the keychain. That identity is a self-signed code-signing certificate, created once like this:
+
+```sh
+cd "$(mktemp -d)"
+printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=Tack Local Signing\n[ext]\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n' > cfg
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 -config cfg
+/usr/bin/openssl pkcs12 -export -inkey key.pem -in cert.pem -out id.p12 -passout pass:voice -name "Tack Local Signing"
+security import id.p12 -k ~/Library/Keychains/login.keychain-db -P voice -T /usr/bin/codesign
+```
+
+You can also sign with any other identity:
+
+```sh
+TACK_SIGN_IDENTITY="Apple Development: …" scripts/build-app.sh --install
+```
+
+</details>
+
+<details>
+<summary><b>CLI</b></summary>
+
+<br>
 
 `tackctl` runs the same transcription pipeline on an existing audio file:
 
@@ -175,9 +240,14 @@ swift run tackctl transcribe note.wav --engine parakeet --language pl --image 4.
 swift run tackctl models   # OpenRouter transcription models
 ```
 
-## Releasing
+</details>
 
-A release is a DMG attached to a GitHub release. `VERSION` at the repo root is the only place the version lives; `CFBundleVersion` is the commit count. Bumping `VERSION` is the whole version bump.
+<details>
+<summary><b>Releasing</b></summary>
+
+<br>
+
+A release is a signed, notarized DMG attached to a GitHub release. `VERSION` at the repo root is the only place the version lives; `CFBundleVersion` is the commit count. Bumping `VERSION` is the whole version bump.
 
 ```sh
 scripts/make-dmg.sh           # builds build/Tack-<version>.dmg (Tack.app + /Applications symlink)
@@ -187,21 +257,17 @@ scripts/release.sh --publish  # also runs `gh release create v<version> …`
 
 `--publish` refuses to run when the working tree is dirty or the `v<version>` tag already exists.
 
-Notarization stays off until there is an Apple Developer ID. With one, it is two environment variables:
+Signing and notarization take a Developer ID and a `notarytool` keychain profile, stored once:
 
 ```sh
-xcrun notarytool store-credentials tack-notary --apple-id … --team-id … --password <app-specific-password>
-TACK_SIGN_IDENTITY="Developer ID Application: … (TEAMID)" TACK_NOTARY_PROFILE=tack-notary scripts/release.sh
+xcrun notarytool store-credentials tack --apple-id … --team-id …   # prompts for an app-specific password
+TACK_SIGN_IDENTITY="Developer ID Application: … (TEAMID)" TACK_NOTARY_PROFILE=tack scripts/release.sh --publish
 ```
 
-`TACK_NOTARY_PROFILE` makes `make-dmg.sh` submit the DMG with `notarytool submit --wait` and staple the ticket to it, and makes `build-app.sh` sign with `--timestamp` (notarization rejects signatures without a secure timestamp) instead of the faster, offline `--timestamp=none`. Set without a Developer ID identity it stops before building, rather than producing a DMG Apple would reject. Once releases are notarized, the *Open Anyway* step above disappears.
+With a Developer ID identity, `build-app.sh` signs with a secure timestamp and `make-dmg.sh` also signs the disk image. `TACK_NOTARY_PROFILE` makes `make-dmg.sh` submit the DMG with `notarytool submit --wait` and staple the ticket to it. Set without a Developer ID identity, it stops before building, rather than producing a DMG Apple would reject.
 
-## Known limitations
-
-- A macOS screenshot whose floating thumbnail is still on screen when you stop recording is not included. Stop after the thumbnail disappears, or turn the thumbnail off in ⌘⇧5 → Options.
-- Changing the input device in the middle of a recording ends the recording.
-- The pill ignores clicks while a recording is being transcribed.
+</details>
 
 ## Credits
 
-- Speech recognition: NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), run through FluidAudio (Apache 2.0).
+- Speech recognition: NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), run through [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0).
