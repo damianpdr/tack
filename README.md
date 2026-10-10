@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/Apple%20Silicon-native-0a84ff?style=flat-square" alt="Apple Silicon">
   <img src="https://img.shields.io/badge/notarized-Developer%20ID-2ea44f?style=flat-square" alt="Notarized by Apple">
   <img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6.2">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">
@@ -33,7 +34,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero.png" width="860" alt="The Tack pill mid-recording with a figure marker and a screenshot thumbnail, above the prompt it pastes into a terminal">
+  <img src="docs/demo.webp" width="860" alt="Tack in use: talking, taking two screenshots and copying an error, then pasting it all as one prompt into a coding agent, which fixes the page">
 </p>
 
 ## Highlights
@@ -271,3 +272,7 @@ With a Developer ID identity, `build-app.sh` signs with a secure timestamp and `
 ## Credits
 
 - Speech recognition: NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), run through [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0).
+
+## License
+
+Tack is released under the [MIT License](LICENSE). The speech model and libraries it uses keep their own licenses, listed under [Credits](#credits).
