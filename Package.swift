@@ -1,33 +1,35 @@
-// swift-tools-version:5.10
+// swift-tools-version:6.2
 import PackageDescription
 
 let package = Package(
-    name: "Voice",
+    name: "Tack",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "Voice", targets: ["Voice"]),
-        .executable(name: "voicectl", targets: ["voicectl"]),
+        .executable(name: "Tack", targets: ["Tack"]),
+        .executable(name: "tackctl", targets: ["tackctl"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7"),
+        // No traits: skips FluidAudio's NeMo text-normalization binary, which ASR does not use.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: []),
     ],
     targets: [
         .target(
-            name: "VoiceCore",
+            name: "TackCore",
             dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .executableTarget(
-            name: "Voice",
-            dependencies: ["VoiceCore"]
+            name: "Tack",
+            dependencies: ["TackCore"]
         ),
         .executableTarget(
-            name: "voicectl",
-            dependencies: ["VoiceCore"]
+            name: "tackctl",
+            dependencies: ["TackCore"]
         ),
         .testTarget(
-            name: "VoiceCoreTests",
-            dependencies: ["VoiceCore"]
+            name: "TackCoreTests",
+            dependencies: ["TackCore"]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
