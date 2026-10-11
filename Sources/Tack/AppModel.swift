@@ -432,7 +432,7 @@ final class AppModel {
     private func ingest(_ item: HistoryItem, dedupe: Bool, captureAt offset: TimeInterval?, from origin: FlightOrigin = .mouse) -> HistoryItem? {
         if let offset, phase == .recording, let dir = sessionDir, let content = captureContent(of: item) {
             let event = CaptureEvent(offset: offset, content: adopt(content, into: dir), sourceApp: item.sourceApp, label: item.title)
-            live.addMarker(capture: event.id, label: markerLabel(for: event.content), at: offset)
+            live.addMarker(capture: event.id, label: Self.markerLabel(for: event.content, after: captures), at: offset)
             captures.append(event)
             pill?.land(event, from: origin, sound: settings.soundEffects)
             return nil
@@ -457,10 +457,26 @@ final class AppModel {
         return .image(path: destination.path)
     }
 
-    /// How the capture will be referenced in the prompt: "figure 2", "clip 1", "file 3".
-    private func markerLabel(for content: CaptureEvent.Content) -> String {
+    /// Takes a capture back out of the recording: its thumbnail, its marker and the file Tack saved for it. The
+    /// markers after it renumber, as the prompt will.
+    func removeCapture(_ id: UUID) {
+        guard phase == .recording, let index = captures.firstIndex(where: { $0.id == id }) else { return }
+        let removed = captures.remove(at: index)
+        if case .image(let path) = removed.content, let dir = sessionDir, path.hasPrefix(dir.path + "/") {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        var labels: [UUID: String] = [:]
+        for (index, capture) in captures.enumerated() {
+            labels[capture.id] = Self.markerLabel(for: capture.content, after: captures[..<index])
+        }
+        live.removeMarker(capture: id, relabeling: labels)
+    }
+
+    /// How the capture will be referenced in the prompt, counting the captures before it: "figure 2", "clip 1",
+    /// "file 3".
+    private static func markerLabel(for content: CaptureEvent.Content, after earlier: some Sequence<CaptureEvent>) -> String {
         var figures = 0, clips = 0, files = 0
-        for capture in captures {
+        for capture in earlier {
             switch capture.content {
             case .image: figures += 1
             case .text: clips += 1

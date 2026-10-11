@@ -65,6 +65,18 @@ public struct LiveTranscript: Equatable, Sendable {
         markers.sort { $0.time < $1.time }
     }
 
+    /// Takes a capture's marker out and renames the remaining ones with `labels`, keyed by capture, so the line keeps
+    /// matching the prompt's numbering.
+    public mutating func removeMarker(capture: UUID, relabeling labels: [UUID: String]) {
+        markers = markers.compactMap { token in
+            guard case .marker(let id, _) = token.kind else { return token }
+            guard id != capture else { return nil }
+            var token = token
+            if let label = labels[id] { token.kind = .marker(capture: id, label: label) }
+            return token
+        }
+    }
+
     /// Words and markers in spoken order. A marker follows every word that started before it.
     public var tokens: [Token] {
         var result: [Token] = []

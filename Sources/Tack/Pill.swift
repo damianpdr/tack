@@ -6,6 +6,8 @@ import TackCore
 @MainActor @Observable
 final class PillState {
     var hovering = false
+    /// The thumbnail under the mouse; it shows the x that removes it.
+    var hoveredCapture: UUID?
     /// False while the pill grows out of (or shrinks back into) a dot.
     var presented = false
     /// Captures still flying in; their thumbnail and marker appear when they land.
@@ -32,6 +34,7 @@ final class PillController {
     private let hostingView: PillHostingView
     private var mouseMonitors: [Any] = []
     private var hideTask: Task<Void, Never>?
+    private var removedAt: Date?
 
     init(model: AppModel) {
         self.model = model
@@ -82,6 +85,7 @@ final class PillController {
         guard panel.isVisible, hideTask == nil else { return }
         state.presented = false
         state.hovering = false
+        state.hoveredCapture = nil
         removeMouseMonitors()
         panel.ignoresMouseEvents = true
         hideTask = Task { @MainActor in
@@ -196,9 +200,29 @@ final class PillController {
     }
 
     private func trackMouse() {
-        let inside = state.presented && capsuleRect.contains(NSEvent.mouseLocation)
+        let mouse = NSEvent.mouseLocation
+        let inside = state.presented && capsuleRect.contains(mouse)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         if state.hovering != inside { state.hovering = inside }
+        let capture = inside ? hoveredCapture(at: mouse) : nil
+        if state.hoveredCapture != capture { state.hoveredCapture = capture }
+    }
+
+    /// The thumbnail under the mouse, newest on top. The one already hovered keeps the hover over its x, which sticks
+    /// out of it.
+    private func hoveredCapture(at mouse: CGPoint) -> UUID? {
+        guard model.phase == .recording else { return nil }
+        let shown = model.captures.suffix(CaptureDeck.visible).map(\.id).filter { !state.landing.contains($0) }
+        if let current = state.hoveredCapture, shown.contains(current), let chip = chipRect(current),
+           chip.union(Self.removeButton(on: chip)).contains(mouse) {
+            return current
+        }
+        return shown.last { chipRect($0)?.contains(mouse) == true }
+    }
+
+    /// Where a click removes a capture: around the x on its thumbnail's top-right corner, larger than the x itself.
+    private static func removeButton(on chip: CGRect) -> CGRect {
+        CGRect(x: chip.maxX - RemoveBadge.inset - 10, y: chip.maxY - RemoveBadge.inset - 10, width: 20, height: 20)
     }
 
     private func click() {
@@ -207,7 +231,16 @@ final class PillController {
         guard rect.contains(mouse) else { return }
         switch model.phase {
         case .recording:
-            if state.hovering, mouse.x - rect.minX <= Self.cancelHitWidth {
+            // The thumbnails shift once one is removed, so a quick second click must not land on what slid in.
+            if let removedAt, Date().timeIntervalSince(removedAt) < NSEvent.doubleClickInterval { return }
+            if let capture = hoveredCapture(at: mouse) {
+                // Clicks on the thumbnails never stop the recording; only an x already showing removes one.
+                if capture == state.hoveredCapture, let chip = chipRect(capture), Self.removeButton(on: chip).contains(mouse) {
+                    model.removeCapture(capture)
+                    state.hoveredCapture = nil
+                    removedAt = Date()
+                }
+            } else if state.hovering, mouse.x - rect.minX <= Self.cancelHitWidth {
                 model.cancelRecording()
             } else {
                 model.toggleRecording()
@@ -718,7 +751,7 @@ extension AnyTransition {
 
 /// The newest captures as a small fanned deck, newest on top, with a rolling count of the older ones in front.
 private struct CaptureDeck: View {
-    private static let visible = 4
+    static let visible = 4
     let captures: [CaptureEvent]
     let state: PillState
     /// Straight and without springs, for the minimal style.
@@ -736,17 +769,28 @@ private struct CaptureDeck: View {
                     .padding(.trailing, 11)
             }
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, capture in
+                let hovered = state.hoveredCapture == capture.id
                 CaptureChip(content: capture.content, inFlight: state.landing.contains(capture.id))
-                    .rotationEffect(.degrees(calm ? 0 : Self.tilt(fromNewest: shown.count - 1 - index)))
-                    .zIndex(Double(index))
+                    .rotationEffect(.degrees(calm || hovered ? 0 : Self.tilt(fromNewest: shown.count - 1 - index)))
+                    .overlay(alignment: .topTrailing) {
+                        if hovered {
+                            RemoveBadge()
+                                .offset(x: RemoveBadge.size / 2 - RemoveBadge.inset, y: RemoveBadge.inset - RemoveBadge.size / 2)
+                                .transition(calm ? .opacity : .scale(scale: 0.4).combined(with: .opacity))
+                        }
+                    }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                         state.chipFrames[capture.id] = frame
                     }
                     .transition(calm ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
+                    // Hovered, it straightens and comes to the front, so its x isn't under the next thumbnail. Outermost,
+                    // or the stack doesn't see it.
+                    .zIndex(hovered ? Double(shown.count) : Double(index))
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: calm ? 1 : 0.68), value: captures.map(\.id))
         .animation(.spring(response: 0.38, dampingFraction: calm ? 1 : 0.68), value: older)
+        .animation(.spring(response: 0.26, dampingFraction: calm ? 1 : 0.75), value: state.hoveredCapture)
     }
 
     private static func tilt(fromNewest position: Int) -> Double {
@@ -819,5 +863,23 @@ private struct CaptureChip: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
         }
+    }
+}
+
+/// The x on a hovered thumbnail, which takes the capture back out of the recording.
+private struct RemoveBadge: View {
+    static let size: CGFloat = 14
+    /// How far in from the thumbnail's corner its centre sits. Any further out, the capsule's curve clips it on the
+    /// newest thumbnail.
+    static let inset: CGFloat = 1
+
+    var body: some View {
+        Image(systemName: "xmark")
+            .font(.system(size: 7, weight: .heavy))
+            .foregroundStyle(.white)
+            .frame(width: Self.size, height: Self.size)
+            .background(Circle().fill(Color(white: 0.14)))
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.45), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.5), radius: 1.5)
     }
 }

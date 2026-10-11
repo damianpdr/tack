@@ -44,6 +44,20 @@ struct LiveTranscriptTests {
         #expect(live.tail(maxCharacters: 100).truncated == false)
         #expect(live.tail(maxCharacters: 2).tokens.map(\.text) == ["please"])
     }
+
+    @Test func removedMarkerLeavesTheLineAndTheRestAreRelabelled() {
+        var live = LiveTranscript()
+        let first = UUID(), second = UUID(), third = UUID()
+        live.addMarker(capture: first, label: "figure 1", at: 0.8)
+        live.addMarker(capture: second, label: "figure 2", at: 1.5)
+        live.addMarker(capture: third, label: "figure 3", at: 2.5)
+        live.update(recognized: words([("look", 0.5), ("here", 1.0), ("please", 2.0)]), windowStart: 0)
+        let id = live.tokens[5].id
+
+        live.removeMarker(capture: second, relabeling: [first: "figure 1", third: "figure 2"])
+        #expect(live.tokens.map(\.text) == ["look", "figure 1", "here", "please", "figure 2"])
+        #expect(live.tokens[4].id == id)
+    }
 }
 
 struct SpeechStatsTests {
