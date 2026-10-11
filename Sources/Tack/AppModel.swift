@@ -639,6 +639,8 @@ final class AppModel {
 }
 
 #if TACK_DEMO
+import QuartzCore
+
 /// A scripted recording for screen captures of the pill: no microphone, no model. Its screenshots are real grabs of
 /// regions of the screen, so the flights start from what is actually there. Build with
 /// `swift build -Xswiftc -DTACK_DEMO` and launch with `TACK_DEMO=1` and a scratch `TACK_HOME`.
@@ -646,8 +648,34 @@ extension AppModel {
     private enum DemoCapture {
         /// Fractions of the visible frame for the origin, then the size in points.
         case region(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat)
+        /// Points from the top-left corner of the main screen.
+        case rect(CGRect)
         case screen
         case clip(String)
+    }
+
+    /// A take read from the JSON file in `TACK_DEMO_SCRIPT`, for promo footage. Positions are points from the top-left of
+    /// the main screen; times are seconds from the start of the recording.
+    private struct DemoScript: Decodable {
+        struct Word: Decodable { var text: String; var time: TimeInterval }
+        struct Capture: Decodable { var time: TimeInterval; var rect: [CGFloat]?; var clip: String? }
+        var words: [Word]
+        var captures: [Capture]
+        var stop: TimeInterval
+        var processing: TimeInterval
+        var deliver: [CGFloat]
+
+        static func load() -> DemoScript? {
+            guard let path = ProcessInfo.processInfo.environment["TACK_DEMO_SCRIPT"],
+                  let data = FileManager.default.contents(atPath: path) else { return nil }
+            return try? JSONDecoder().decode(DemoScript.self, from: data)
+        }
+    }
+
+    /// Event times on the host clock, which screen-capture sample buffers also use, so footage can be cut to them.
+    private func demoMark(_ event: String) {
+        print("TACKDEMO \(event) \(CACurrentMediaTime())")
+        fflush(stdout)
     }
 
     private static let demoWords: [(text: String, time: TimeInterval)] = [
@@ -668,18 +696,39 @@ extension AppModel {
     ]
 
     func runDemo() async {
+        switch ProcessInfo.processInfo.environment["TACK_DEMO"] {
+        case "settings":
+            showSettings(tab: .general)
+            return
+        case "history":
+            seedDemoHistory()
+            toggleHistory()
+            return
+        default:
+            break
+        }
         NSApp.setActivationPolicy(.accessory)
         for window in NSApp.windows where window.isVisible && window.canBecomeMain { window.orderOut(nil) }
         try? await Task.sleep(for: .seconds(1.5))
         guard let dir = try? sessions.makeSessionDirectory(date: Date()) else { return }
+        let script = DemoScript.load()
+        let screenHeight = NSScreen.main?.frame.height ?? 0
         sessionDir = dir
         captures = []
         live = LiveTranscript()
         resetLevels()
         setPhase(.recording)
+        demoMark("start")
         if settings.soundEffects { Sounds.play(.start) }
         let start = Date()
-        let words = Self.demoWords
+        let words = script.map { $0.words.map { (text: $0.text, time: $0.time) } } ?? Self.demoWords
+        let steps: [(time: TimeInterval, capture: DemoCapture)] = script.map {
+            $0.captures.map { step in
+                if let clip = step.clip { return (step.time, .clip(clip)) }
+                let r = step.rect ?? [0, 0, 0, 0]
+                return (step.time, .rect(CGRect(x: r[0], y: screenHeight - r[1] - r[3], width: r[2], height: r[3])))
+            }
+        } ?? Self.demoCaptures
 
         let voice = Task { @MainActor in
             while !Task.isCancelled {
@@ -700,25 +749,42 @@ extension AppModel {
                 live.update(recognized: heard, windowStart: windowStart)
             }
         }
-        for step in Self.demoCaptures {
+        for (index, step) in steps.enumerated() {
             await demoWait(until: step.time, from: start)
+            demoMark("capture\(index + 1)")
             await demoCapture(step.capture, offset: step.time)
         }
-        await demoWait(until: 14.4, from: start)
+        await demoWait(until: script?.stop ?? 14.4, from: start)
         voice.cancel()
         listener.cancel()
         resetLevels()
         setPhase(.processing)
-        try? await Task.sleep(for: .seconds(1.6))
+        demoMark("stop")
+        try? await Task.sleep(for: .seconds(script?.processing ?? 1.6))
         setPhase(.finished("Pasted"))
+        demoMark("finished")
         // A fixed spot well above the pill, so the throw reads on video; the app aims at the text cursor.
         let visible = (NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main)?.visibleFrame ?? .zero
-        pill?.deliver(to: CGPoint(x: visible.midX + visible.width * 0.12, y: visible.minY + visible.height * 0.55), sound: settings.soundEffects)
+        let target = script.map { CGPoint(x: $0.deliver[0], y: screenHeight - $0.deliver[1]) }
+            ?? CGPoint(x: visible.midX + visible.width * 0.12, y: visible.minY + visible.height * 0.55)
+        pill?.deliver(to: target, sound: settings.soundEffects)
         try? await Task.sleep(for: .seconds(1.5))
         sessionDir = nil
         setPhase(.idle)
         try? await Task.sleep(for: .seconds(0.8))
         if ProcessInfo.processInfo.environment["TACK_DEMO_EXIT"] != nil { NSApp.terminate(nil) }
+    }
+
+    /// Fills the history from the `[HistoryItem]` JSON in `TACK_DEMO_HISTORY` (ISO 8601 dates), for shots of the window.
+    private func seedDemoHistory() {
+        guard let path = ProcessInfo.processInfo.environment["TACK_DEMO_HISTORY"],
+              let data = FileManager.default.contents(atPath: path) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let items = try? decoder.decode([HistoryItem].self, from: data) else { return }
+        for item in items { _ = store.add(item, dedupe: false) }
+        history = store.load()
+        typingTimeSaved = Self.timeSaved(in: history)
     }
 
     private func demoWait(until time: TimeInterval, from start: Date) async {
@@ -739,6 +805,8 @@ extension AppModel {
         case .region(let x, let y, let width, let height):
             let visible = screen.visibleFrame
             rect = CGRect(x: visible.minX + visible.width * x, y: visible.minY + visible.height * y, width: width, height: height)
+        case .rect(let given):
+            rect = given
         }
         let url = ImageFiles.newPNGURL(in: paths.clips, prefix: "screenshot")
         let top = CGDisplayBounds(CGMainDisplayID()).height - rect.maxY
