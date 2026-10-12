@@ -183,7 +183,7 @@ Everything else is stored in `~/.tack`. Set `TACK_HOME` to use a different folde
 settings.json                        everything except the OpenRouter key
 history.sqlite
 clips/                               screenshots taken outside recordings
-sessions/<yyyy-MM-dd_HH-mm-ss>/      audio.wav, figure-N.png, prompt.md, transcript.txt, session.json,
+sessions/<yyyy-MM-dd_HH-mm-ss>/      audio.m4a, figure-N.png, prompt.md, transcript.txt, session.json,
                                      captures/ (full-size originals of the figures)
 latest -> sessions/…                 the most recent prompt
 models/                              the downloaded Parakeet model

@@ -275,7 +275,7 @@ final class AppModel {
         let paths = paths
         var engineName = settings.engine.title
         do {
-            try await Task.detached { try WAVFile.write(audio, to: dir.appendingPathComponent("audio.wav")) }.value
+            try await Task.detached { try SessionAudio.write(audio, in: dir) }.value
             let blocks: [PromptBlock]
             if voiced {
                 let engine = try Transcriber.makeEngine(settings: settings, paths: paths)
@@ -594,7 +594,7 @@ final class AppModel {
         let dir = URL(fileURLWithPath: dirPath, isDirectory: true)
         let settings = settings
         do {
-            let audio = try await Task.detached { try WAVFile.read(dir.appendingPathComponent("audio.wav")) }.value
+            let audio = try await Task.detached { try WAVFile.read(SessionAudio.url(in: dir)) }.value
             let events = try sessions.loadEvents(dir: dir)
             let engine = try Transcriber.makeEngine(settings: settings, paths: paths)
             let blocks = try await transcribe(audio: audio, events: events, engine: engine, language: settings.language, dir: dir)

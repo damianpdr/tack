@@ -15,6 +15,35 @@ public struct PCMAudio: Sendable, Equatable {
     }
 }
 
+/// The recording each session folder keeps for re-transcription: Apple Lossless in `audio.m4a`, under half the size
+/// of 16-bit WAV. Lossy AAC is smaller still, but it changes a few words of every transcript.
+public enum SessionAudio {
+    public static let fileName = "audio.m4a"
+
+    public static func write(_ audio: PCMAudio, in dir: URL) throws {
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatAppleLossless,
+            AVSampleRateKey: PCMAudio.sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitDepthHintKey: 16,
+        ]
+        let file = try AVAudioFile(forWriting: dir.appendingPathComponent(fileName), settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        guard !audio.samples.isEmpty else { return }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(audio.samples.count)),
+              let channel = buffer.floatChannelData?[0]
+        else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: file.url.path]) }
+        audio.samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: $0.count) }
+        buffer.frameLength = AVAudioFrameCount(audio.samples.count)
+        try file.write(from: buffer)
+    }
+
+    /// The session's recording; older sessions keep `audio.wav`. `WAVFile.read` reads both.
+    public static func url(in dir: URL) -> URL {
+        let m4a = dir.appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: m4a.path) ? m4a : dir.appendingPathComponent("audio.wav")
+    }
+}
+
 public enum WAVFile {
     public static func write(_ audio: PCMAudio, to url: URL) throws {
         try write(audio.samples[...], to: url)
@@ -46,6 +75,7 @@ public enum WAVFile {
         try data.write(to: url, options: .atomic)
     }
 
+    /// Reads anything `AVAudioFile` can, WAV and M4A included, as 16 kHz mono.
     public static func read(_ url: URL) throws -> PCMAudio {
         let file = try AVAudioFile(forReading: url)
         let inputFormat = file.processingFormat
