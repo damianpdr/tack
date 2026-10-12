@@ -81,6 +81,20 @@ struct ChunkPlannerTests {
         #expect(items[2].isSilent == true)
     }
 
+    @Test func quietVoiceAboveQuietRoomIsVoiced() {
+        // A built-in mic at half input volume: room noise near -62 dBFS, speech near -44 dBFS.
+        let audio = makeAudio([(1, 0.0008), (2, 0.006), (1, 0.0008)])
+        #expect(ChunkPlanner.plan(audio: audio, events: []).map(\.isSilent) == [false])
+        let speech = ChunkPlanner.speechRange(audio: audio)
+        #expect(speech == sample(0.7)..<sample(3.3))
+    }
+
+    @Test func steadyNoiseIsSilent() {
+        let audio = makeAudio([(3, 0.003)])
+        #expect(ChunkPlanner.plan(audio: audio, events: []).map(\.isSilent) == [true])
+        #expect(ChunkPlanner.speechRange(audio: audio) == nil)
+    }
+
     @Test func snappedBoundariesStayStrictlyIncreasing() {
         let audio = makeAudio([(2.48, 0.3), (0.02, 0), (0.06, 0.3), (0.04, 0.05), (2.4, 0.3)])
         let items = ChunkPlanner.plan(audio: audio, events: [event(2.0, "a"), event(3.05, "b")])

@@ -6,7 +6,11 @@ public enum ChunkPlanner {
         public var snapWindow: TimeInterval = 0.6
         public var edgeMargin: TimeInterval = 0.3
         public var maxChunk: TimeInterval = 180
-        public var voicedThresholdDBFS: Float = -40
+        /// A frame is voiced when it is this many decibels above the recording's room noise…
+        public var voicedAboveNoise: Float = 12
+        /// …within these bounds: a noisy room never needs more than -40 dBFS, and near-silent input doesn't turn
+        /// breaths and clicks into voice.
+        public var voicedThresholdDBFS: ClosedRange<Float> = -52 ... -40
         public var minVoiced: TimeInterval = 0.25
 
         public init() {}
@@ -28,6 +32,7 @@ public enum ChunkPlanner {
         guard sampleCount > 0 else { return sorted.map(Item.event) }
 
         let rms = frameRMS(audio.samples)
+        let threshold = voicedThreshold(rms: rms, options: options)
         let duration = audio.duration
         let rate = PCMAudio.sampleRate
 
@@ -72,11 +77,11 @@ public enum ChunkPlanner {
         var start = 0
         for cut in cuts {
             let end = min(sampleCount, cut.frame * frameLength + frameLength / 2)
-            items += audioItems(start..<end, rms: rms, options: options)
+            items += audioItems(start..<end, rms: rms, threshold: threshold, options: options)
             items += cut.events.map(Item.event)
             start = end
         }
-        items += audioItems(start..<sampleCount, rms: rms, options: options)
+        items += audioItems(start..<sampleCount, rms: rms, threshold: threshold, options: options)
         items += trailing.map(Item.event)
         return items
     }
@@ -84,17 +89,22 @@ public enum ChunkPlanner {
     /// Samples from the first to the last voiced frame, padded by `edgeMargin`; nil when the audio has too little voice.
     static func speechRange(audio: PCMAudio, options: Options = .init()) -> Range<Int>? {
         let rms = frameRMS(audio.samples)
-        let threshold = voicedThreshold(options)
+        let threshold = voicedThreshold(rms: rms, options: options)
         guard let first = rms.firstIndex(where: { $0 > threshold }),
               let last = rms.lastIndex(where: { $0 > threshold }),
-              !isSilent(0..<audio.samples.count, rms: rms, options: options)
+              !isSilent(0..<audio.samples.count, rms: rms, threshold: threshold, options: options)
         else { return nil }
         let pad = Int(options.edgeMargin * PCMAudio.sampleRate)
         return max(0, first * frameLength - pad)..<min(audio.samples.count, (last + 1) * frameLength + pad)
     }
 
-    private static func voicedThreshold(_ options: Options) -> Float {
-        Float(pow(10, Double(options.voicedThresholdDBFS) / 20))
+    /// The room noise is the recording's quietest tenth, so a built-in mic at a low input volume, where speech sits
+    /// well under -40 dBFS but still far above the noise, isn't mistaken for silence.
+    private static func voicedThreshold(rms: [Float], options: Options) -> Float {
+        let noise = rms.isEmpty ? 0 : rms.sorted()[rms.count / 10]
+        let decibels = 20 * log10(max(noise, 1e-6)) + options.voicedAboveNoise
+        let bounds = options.voicedThresholdDBFS
+        return pow(10, min(bounds.upperBound, max(bounds.lowerBound, decibels)) / 20)
     }
 
     static func frameRMS(_ samples: [Float]) -> [Float] {
@@ -116,7 +126,7 @@ public enum ChunkPlanner {
         return best
     }
 
-    private static func audioItems(_ span: Range<Int>, rms: [Float], options: Options) -> [Item] {
+    private static func audioItems(_ span: Range<Int>, rms: [Float], threshold: Float, options: Options) -> [Item] {
         guard !span.isEmpty else { return [] }
         let maxSamples = max(frameLength * 2, Int(options.maxChunk * PCMAudio.sampleRate))
         var pieces: [Range<Int>] = []
@@ -132,11 +142,10 @@ public enum ChunkPlanner {
             start = cut
         }
         pieces.append(start..<span.upperBound)
-        return pieces.map { .audio($0, silent: isSilent($0, rms: rms, options: options)) }
+        return pieces.map { .audio($0, silent: isSilent($0, rms: rms, threshold: threshold, options: options)) }
     }
 
-    private static func isSilent(_ span: Range<Int>, rms: [Float], options: Options) -> Bool {
-        let threshold = voicedThreshold(options)
+    private static func isSilent(_ span: Range<Int>, rms: [Float], threshold: Float, options: Options) -> Bool {
         var voiced = 0
         for frame in (span.lowerBound / frameLength)...((span.upperBound - 1) / frameLength) where rms[frame] > threshold {
             let frameStart = frame * frameLength
