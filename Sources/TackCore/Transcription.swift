@@ -342,7 +342,7 @@ public enum Transcriber {
 
     public static func blocks(for event: CaptureEvent) -> [PromptBlock] {
         switch event.content {
-        case .image(let path): [.image(path: path)]
+        case .image(let path): [.image(path: path, pointer: event.pointer)]
         case .text(let text): [.clip(text)]
         case .files(let paths): paths.map { .file(path: $0) }
         }

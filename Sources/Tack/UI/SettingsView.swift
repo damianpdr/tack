@@ -92,10 +92,15 @@ private struct GeneralSettings: View {
                     }
                 }
             }
-            Section("While recording") {
+            Section {
                 Toggle("Capture clipboard copies", isOn: $model.settings.captureClipboardWhileRecording)
                 Toggle("Capture macOS screenshots saved to disk", isOn: $model.settings.captureSystemScreenshots)
                 Toggle("Mark up screenshots before adding them (experimental)", isOn: $model.settings.annotateScreenshots)
+                Toggle("Point at things with Control + Option + click", isOn: $model.settings.pointWhileRecording)
+            } header: {
+                Text("While recording")
+            } footer: {
+                SettingsFootnote("Hold Control + Option and click anything to add its window to the prompt, with what you clicked outlined and named next to the figure: the button or link text, and the page address in browsers. The click itself doesn't reach the app.")
             }
             Section {
                 Picker("Figure size", selection: $model.settings.maxFigureDimension) {

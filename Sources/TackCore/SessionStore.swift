@@ -50,7 +50,7 @@ public struct SessionStore: Sendable {
         var figureNumber = 0
         // Files directly in the session folder are figures from an earlier finalize (re-transcribe); captures in
         // its `captures/` subfolder and anything outside it still become figure-N.
-        for case .image(let path) in blocks where renamed[path] == nil {
+        for case .image(let path, _) in blocks where renamed[path] == nil {
             figureNumber += 1
             guard URL(fileURLWithPath: path).standardizedFileURL.deletingLastPathComponent().path != dirPath,
                   fm.fileExists(atPath: path)
@@ -66,7 +66,7 @@ public struct SessionStore: Sendable {
         }
 
         let finalBlocks = blocks.map { block -> PromptBlock in
-            if case .image(let path) = block { return .image(path: renamed[path] ?? path) }
+            if case .image(let path, let pointer) = block { return .image(path: renamed[path] ?? path, pointer: pointer) }
             return block
         }
         let finalEvents = events.map { event -> CaptureEvent in

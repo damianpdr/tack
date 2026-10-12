@@ -117,6 +117,11 @@ struct TranscriberTests {
         ])
     }
 
+    @Test func pointerTravelsFromCaptureToBlock() {
+        let event = CaptureEvent(offset: 1, content: .image(path: "/a.png"), pointer: #"link "Billing" in Safari"#)
+        #expect(Transcriber.blocks(for: event) == [.image(path: "/a.png", pointer: #"link "Billing" in Safari"#)])
+    }
+
     @Test func timedEngineGetsTrimmedSpeechWithShiftedEvents() async throws {
         let voiced: [Float] = (0..<Int(PCMAudio.sampleRate) * 2).map { $0 % 2 == 0 ? 0.3 : -0.3 }
         let silence = [Float](repeating: 0, count: Int(PCMAudio.sampleRate) * 2)

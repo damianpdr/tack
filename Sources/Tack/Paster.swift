@@ -82,8 +82,9 @@ final class Paster {
         }
     }
 
+    /// A lone image that something was pointed at in goes as text instead, so its pointer line comes along.
     private static func loneImage(_ blocks: [PromptBlock]) -> String? {
-        guard blocks.count == 1, case .image(let path) = blocks[0] else { return nil }
+        guard blocks.count == 1, case .image(let path, nil) = blocks[0] else { return nil }
         return path
     }
 

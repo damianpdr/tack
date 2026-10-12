@@ -146,13 +146,13 @@ struct SessionStoreTests {
             CaptureEvent(offset: 2, content: .image(path: inside.path)),
             CaptureEvent(offset: 3, content: .image(path: other.path)),
         ]
-        let blocks: [PromptBlock] = [.text("see"), .image(path: external.path), .image(path: inside.path), .image(path: external.path), .image(path: other.path), .image(path: captured.path)]
+        let blocks: [PromptBlock] = [.text("see"), .image(path: external.path), .image(path: inside.path), .image(path: external.path), .image(path: other.path), .image(path: captured.path, pointer: "button")]
 
         let result = try store.finalize(dir: dir, blocks: blocks, events: events, engine: "test", duration: 4, maxFigureDimension: 0)
         let figure1 = dir.appendingPathComponent("figure-1.png").path
         let figure3 = dir.appendingPathComponent("figure-3.jpg").path
         let figure4 = dir.appendingPathComponent("figure-4.png").path
-        #expect(result.blocks == [.text("see"), .image(path: figure1), .image(path: inside.path), .image(path: figure1), .image(path: figure3), .image(path: figure4)])
+        #expect(result.blocks == [.text("see"), .image(path: figure1), .image(path: inside.path), .image(path: figure1), .image(path: figure3), .image(path: figure4, pointer: "button")])
         #expect(result.prompt.figures == [figure1, inside.path, figure3, figure4])
         #expect(fm.fileExists(atPath: figure1) && fm.fileExists(atPath: figure3) && fm.fileExists(atPath: figure4))
         #expect(fm.fileExists(atPath: external.path) && fm.fileExists(atPath: captured.path))

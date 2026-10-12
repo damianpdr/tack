@@ -5,7 +5,7 @@ public struct ComposedPrompt: Equatable, Sendable {
     public var body: String
     /// Agent/terminal format: body, reference lines with absolute paths, clip contents.
     public var markdown: String
-    /// Normal-app format: body and clip contents; images are pasted separately.
+    /// Normal-app format: body, what pointed-at figures show, and clip contents; images are pasted separately.
     public var richText: String
     /// Figure paths; `figures[0]` is `[figure 1]`.
     public var figures: [String]
@@ -29,6 +29,7 @@ public enum PromptComposer {
         }
 
         var figures: [String] = []
+        var pointers: [String?] = []
         var clips: [String] = []
         var files: [String] = []
         var body = ""
@@ -43,11 +44,13 @@ public enum PromptComposer {
                 guard !text.isEmpty else { continue }
                 element = text
                 isMultiline = text.contains("\n")
-            case .image(let path):
+            case .image(let path, let pointer):
                 if let index = figures.firstIndex(of: path) {
                     element = "[figure \(index + 1)]"
+                    if pointers[index] == nil { pointers[index] = pointer }
                 } else {
                     figures.append(path)
+                    pointers.append(pointer)
                     element = "[figure \(figures.count)]"
                 }
             case .clip(let text):
@@ -64,12 +67,18 @@ public enum PromptComposer {
             previousIsMultiline = isMultiline
         }
 
-        let referenceLines = figures.enumerated().map { "[figure \($0.offset + 1)]: \(formatPath($0.element))" }
-            + files.enumerated().map { "[file \($0.offset + 1)]: \(formatPath($0.element))" }
+        let figureLines = figures.indices.map { index in
+            "[figure \(index + 1)]: \(formatPath(figures[index]))" + (pointers[index].map { " — pointing at \($0)" } ?? "")
+        }
+        let referenceLines = figureLines + files.enumerated().map { "[file \($0.offset + 1)]: \(formatPath($0.element))" }
+        // Pasted images carry no path line, so the pointers get lines of their own.
+        let pointerLines = pointers.enumerated().compactMap { index, pointer in
+            pointer.map { "[figure \(index + 1)]: pointing at \($0)" }
+        }
         let clipParagraphs = clips.enumerated().map { "[clip \($0.offset + 1)]:\n\(fenced($0.element))" }
 
         let markdownSections = [body, referenceLines.joined(separator: "\n")] + clipParagraphs
-        let richSections = [body] + clipParagraphs
+        let richSections = [body, pointerLines.joined(separator: "\n")] + clipParagraphs
         return ComposedPrompt(
             body: body,
             markdown: markdownSections.filter { !$0.isEmpty }.joined(separator: "\n\n"),

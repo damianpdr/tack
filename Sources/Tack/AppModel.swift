@@ -24,6 +24,7 @@ final class AppModel {
             }
             if settings.hotkeys != oldValue.hotkeys { registerHotkeys() }
             if settings.showInDock != oldValue.showInDock { applyActivationPolicy() }
+            if settings.pointWhileRecording != oldValue.pointWhileRecording { syncPointerTap() }
             if settings.historyLimit != oldValue.historyLimit {
                 store.prune(keepingNewest: max(1, settings.historyLimit))
                 reloadHistory()
@@ -60,6 +61,7 @@ final class AppModel {
     @ObservationIgnored private let clipboard: ClipboardMonitor
     @ObservationIgnored private let screenshots: ScreenshotService
     @ObservationIgnored private let screenshotWatcher = ScreenshotFolderWatcher()
+    @ObservationIgnored private let pointerTap = PointerTap()
     @ObservationIgnored private let paster = Paster()
     @ObservationIgnored private var pill: PillController?
     @ObservationIgnored private var windows: WindowManager?
@@ -109,6 +111,8 @@ final class AppModel {
             guard let self, phase == .recording else { return }
             ingest(item, dedupe: true, captureAt: recorder.currentOffset)
         }
+
+        pointerTap.onPoint = { [weak self] location in self?.point(at: location) }
 
         screenshotWatcher.onItem = { [weak self] item, created in
             guard let self, phase == .recording, let startDate = recorder.startDate else { return }
@@ -179,6 +183,7 @@ final class AppModel {
         captures = []
         resetLevels()
         setPhase(.idle)
+        syncPointerTap()
     }
 
     private func startRecording() {
@@ -217,6 +222,7 @@ final class AppModel {
                 clipboard.start()
             }
             startLivePreview()
+            syncPointerTap()
             if settings.captureSystemScreenshots, let startDate = recorder.startDate {
                 screenshotWatcher.start(since: startDate, clipsDirectory: paths.clips)
             }
@@ -231,6 +237,7 @@ final class AppModel {
         screenshotWatcher.flush()
         screenshotWatcher.stop()
         setPhase(.processing)
+        syncPointerTap()
         hotkeys.escapeEnabled = false
         let audio = recorder.stop()
         resetLevels()
@@ -427,6 +434,36 @@ final class AppModel {
         }
     }
 
+    /// ⌃⌥-clicks are only taken while recording, and only with the setting on.
+    private func syncPointerTap() {
+        guard settings.pointWhileRecording, phase == .recording else {
+            pointerTap.stop()
+            return
+        }
+        if !pointerTap.start() {
+            lastError = "Pointing with Control + Option + click needs Accessibility access. Allow Tack in System Settings → Privacy & Security → Accessibility."
+        }
+    }
+
+    /// The window under a ⌃⌥-click joins the recording at the moment of the click, with what was clicked marked.
+    private func point(at location: CGPoint) {
+        guard phase == .recording, let session = recorder.startDate else { return }
+        let offset = recorder.currentOffset
+        Task {
+            let url = ImageFiles.newPNGURL(in: paths.clips, prefix: "pointer")
+            guard let shot = await PointerCapture.capture(at: location, to: url) else {
+                NSSound.beep()
+                return
+            }
+            guard phase == .recording, recorder.startDate == session, let size = ImageFiles.pixelSize(at: url) else {
+                try? FileManager.default.removeItem(at: url)
+                return
+            }
+            let item = HistoryItem.image(path: url.path, size: size, screenshot: true, sourceApp: shot.appName)
+            ingest(item, dedupe: false, captureAt: offset, from: .rect(shot.rect), pointer: shot.pointer)
+        }
+    }
+
     /// Experimental mark-up pass; see `AnnotationEditor`. Esc has to reach the editor, not cancel the recording.
     private func annotate(path: String) async {
         hotkeys.escapePaused = true
@@ -439,9 +476,12 @@ final class AppModel {
     /// While recording, a capture belongs to the recording: it becomes a marker in its prompt instead of a History
     /// item of its own, and flies into the pill from `origin`. Returns nil in that case.
     @discardableResult
-    private func ingest(_ item: HistoryItem, dedupe: Bool, captureAt offset: TimeInterval?, from origin: FlightOrigin = .mouse) -> HistoryItem? {
+    private func ingest(
+        _ item: HistoryItem, dedupe: Bool, captureAt offset: TimeInterval?, from origin: FlightOrigin = .mouse, pointer: String? = nil
+    ) -> HistoryItem? {
         if let offset, phase == .recording, let dir = sessionDir, let content = captureContent(of: item) {
-            let event = CaptureEvent(offset: offset, content: adopt(content, into: dir), sourceApp: item.sourceApp, label: item.title)
+            let event = CaptureEvent(
+                offset: offset, content: adopt(content, into: dir), sourceApp: item.sourceApp, label: item.title, pointer: pointer)
             live.addMarker(capture: event.id, label: Self.markerLabel(for: event.content, after: captures), at: offset)
             captures.append(event)
             pill?.land(event, from: origin, sound: settings.soundEffects)

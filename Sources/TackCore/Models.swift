@@ -101,6 +101,9 @@ public struct Settings: Codable, Equatable, Sendable {
     public var captureSystemScreenshots: Bool = false
     /// Experimental: open the mark-up editor for every screenshot Tack takes itself.
     public var annotateScreenshots: Bool = false
+    /// ⌃⌥-click while recording captures the window under the pointer, marks what was clicked and names it in the
+    /// prompt. The click never reaches the app.
+    public var pointWhileRecording: Bool = false
     /// Short cues when a recording starts, a capture lands in it and the prompt is delivered.
     public var soundEffects: Bool = true
     public var pillStyle: PillStyle = .expressive
@@ -129,6 +132,7 @@ public struct Settings: Codable, Equatable, Sendable {
         captureClipboardWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .captureClipboardWhileRecording) ?? d.captureClipboardWhileRecording
         captureSystemScreenshots = try c.decodeIfPresent(Bool.self, forKey: .captureSystemScreenshots) ?? d.captureSystemScreenshots
         annotateScreenshots = try c.decodeIfPresent(Bool.self, forKey: .annotateScreenshots) ?? d.annotateScreenshots
+        pointWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .pointWhileRecording) ?? d.pointWhileRecording
         soundEffects = try c.decodeIfPresent(Bool.self, forKey: .soundEffects) ?? d.soundEffects
         pillStyle = (try? c.decodeIfPresent(PillStyle.self, forKey: .pillStyle)) ?? d.pillStyle
         showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? d.showInDock
@@ -166,13 +170,19 @@ public struct CaptureEvent: Codable, Hashable, Identifiable, Sendable {
     public var sourceApp: String?
     /// Human label, e.g. "Orca screenshot (1408×890)".
     public var label: String?
+    /// What a ⌃⌥-click pointed at in an image capture; see `PromptBlock.image`.
+    public var pointer: String?
 
-    public init(id: UUID = UUID(), offset: TimeInterval, content: Content, sourceApp: String? = nil, label: String? = nil) {
+    public init(
+        id: UUID = UUID(), offset: TimeInterval, content: Content, sourceApp: String? = nil, label: String? = nil,
+        pointer: String? = nil
+    ) {
         self.id = id
         self.offset = offset
         self.content = content
         self.sourceApp = sourceApp
         self.label = label
+        self.pointer = pointer
     }
 }
 
@@ -180,8 +190,9 @@ public struct CaptureEvent: Codable, Hashable, Identifiable, Sendable {
 public enum PromptBlock: Codable, Hashable, Sendable {
     /// Inline prose (transcribed speech or a stacked text item).
     case text(String)
-    /// Absolute image path, referenced inline as `[figure N]`.
-    case image(path: String)
+    /// Absolute image path, referenced inline as `[figure N]`. `pointer` says what the marked spot in the image is,
+    /// e.g. `button "Save changes" in Safari, http://localhost:3000/settings`, and ends the figure's reference line.
+    case image(path: String, pointer: String? = nil)
     /// Copied text, referenced inline as `[clip N]` with the content appended.
     case clip(String)
     /// Absolute file path, referenced inline as `[file N]`.
@@ -234,7 +245,7 @@ public struct HistoryItem: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var imagePaths: [String] {
-        blocks.compactMap { if case .image(let path) = $0 { path } else { nil } }
+        blocks.compactMap { if case .image(let path, _) = $0 { path } else { nil } }
     }
 
     public var filePaths: [String] {

@@ -66,6 +66,19 @@ Requires macOS 14 or later on Apple Silicon. Releases are signed with a Develope
 
 Or hold `⌃⌥R` while you talk and let go to finish; the pill gets a warm rim while you hold. `Esc` or the pill's `×` cancels the recording and discards it.
 
+### Pointing
+
+Turn on *Settings → General → While recording → Point at things with Control + Option + click* (off by default). While recording, hold Control + Option and click anything on screen: "make this smaller", click, "and this should use the accent colour", click. Each click adds the window under the pointer as a figure, with what you clicked outlined in red, and names it after the figure's path:
+
+```
+make this smaller [figure 1] and this should use the accent colour [figure 2]
+
+[figure 1]: /Users/me/.tack/sessions/…/figure-1.png — pointing at heading "Account settings" in Google Chrome, http://localhost:3000/settings
+[figure 2]: /Users/me/.tack/sessions/…/figure-2.png — pointing at button "Save changes" in Google Chrome, http://localhost:3000/settings
+```
+
+The agent can search the code for the label and knows which page it is on. Outside browsers the window title stands in for the address. The click itself never reaches the app, so pointing at a button doesn't press it. It uses the Accessibility and Screen Recording access Tack already has.
+
 ### Pill style
 
 *Settings → General → Pill* offers two styles:
@@ -95,6 +108,7 @@ TypeError: cannot read properties of undefined
 
 - Figure and file paths are absolute. A path that contains spaces is wrapped in `<…>`.
 - If the only thing captured is one image and nothing was said, the bare image path is pasted.
+- A figure added with Control + Option + click ends its line with what it points at. Apps that get the pictures instead of paths get those lines on their own, after the text.
 
 How the paste depends on the frontmost app:
 
@@ -119,6 +133,7 @@ cat ~/.tack/latest/prompt.md
 | `⌃⌥3` | Full-screen screenshot |
 | `⌃⌥V` | History window |
 | `Esc` | Cancel the current recording |
+| Control + Option + click | While recording, point at something on screen (when turned on in Settings) |
 
 All of them can be changed in *Settings → General*. The defaults all use `⌃⌥`, which types no characters and is free in window managers like Rectangle and Magnet. Only one app can register each shortcut; if another app already uses one, Settings marks it.
 
@@ -194,6 +209,7 @@ models/                              the downloaded Parakeet model
 
 - A macOS screenshot whose floating thumbnail is still on screen when you stop recording is not included. Stop after the thumbnail disappears, or turn the thumbnail off in ⌘⇧5 → Options.
 - The pill ignores clicks while a recording is being transcribed.
+- Pointing names only what an app exposes to Accessibility. On a canvas (Figma, games) or in apps that expose little, the line says "the marked spot" and the window title instead.
 
 ## Development
 
