@@ -160,7 +160,35 @@ struct TranscriberTests {
         ])
     }
 
+    @Test func dropsUnknownTokens() {
+        let words = ParakeetEngine.words(from: [(" link", 0, 0.2), (" <unk>", 0.2, 0.3), ("<unk>", 0.3, 0.4), (" usuń", 0.4, 0.6)])
+        #expect(words.map(\.text) == [" link", " usuń"])
+    }
+
     @Test func firstTokenWithoutSpaceStartsAWord() {
         #expect(ParakeetEngine.words(from: [("ok", 0, 0.1)]) == [TimedWord(text: " ok", start: 0, end: 0.1)])
+    }
+}
+
+@Suite struct ParakeetModelTests {
+    /// The files FluidAudio checks for, without weights. Also catches a directory name FluidAudio would not look in.
+    private func fakeDownload(_ model: ParakeetModel) throws {
+        for name in ["Preprocessor", "Encoder", "Decoder", "JointDecisionv3"] {
+            try FileManager.default.createDirectory(
+                at: model.directory.appendingPathComponent("\(name).mlmodelc"), withIntermediateDirectories: true)
+        }
+        try Data("{}".utf8).write(to: model.directory.appendingPathComponent("parakeet_vocab.json"))
+    }
+
+    @Test func prefersUltraAndFallsBackToV3() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tack-tests-\(UUID().uuidString)", isDirectory: true)
+        let paths = TackPaths(root: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(ParakeetModel.installed(paths) == nil)
+        try fakeDownload(.v3(paths))
+        #expect(ParakeetModel.installed(paths) == .v3(paths))
+        try fakeDownload(.ultra(paths))
+        #expect(ParakeetModel.installed(paths) == .ultra(paths))
     }
 }

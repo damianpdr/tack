@@ -325,7 +325,8 @@ private struct ParakeetSection: View {
     private let loader = ParakeetLoader.shared
 
     var body: some View {
-        let downloaded = loader.ready || ParakeetEngine.isDownloaded(at: model.paths.parakeetModels)
+        let ultra = ParakeetModel.ultra(model.paths)
+        let installed = loader.ready ? ultra : ParakeetModel.installed(model.paths)
         Section {
             if let progress = loader.progress {
                 HStack {
@@ -335,15 +336,17 @@ private struct ParakeetSection: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 70, alignment: .trailing)
                 }
-            } else if downloaded {
-                Label("Model ready: parakeet-tdt-0.6b-v3", systemImage: "checkmark.circle.fill")
+            } else if installed == ultra {
+                Label("Model ready: Parakeet Ultra", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             } else {
                 HStack {
-                    Text("Download the model once (~470 MB). After that, everything runs on this Mac.")
+                    Text(installed == nil
+                        ? "Download the model once (~630 MB). After that, everything runs on this Mac."
+                        : "Using Parakeet v3. Parakeet Ultra makes fewer mistakes at the same speed (~630 MB download).")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Download") { loader.start(directory: model.paths.parakeetModels) }
+                    Button("Download") { loader.start(ultra) }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -356,7 +359,7 @@ private struct ParakeetSection: View {
         } header: {
             Text("Parakeet")
         } footer: {
-            SettingsFootnote("NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0) via FluidAudio. Detects the language on its own; choosing one above only filters out other alphabets.")
+            SettingsFootnote("Parakeet Ultra, moondream's post-training of NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), via FluidAudio. Detects the language on its own; choosing one above only filters out other alphabets.")
         }
         .font(.callout)
     }
@@ -370,13 +373,13 @@ private final class ParakeetLoader {
     private(set) var error: String?
     private(set) var ready = false
 
-    func start(directory: URL) {
+    func start(_ model: ParakeetModel) {
         guard progress == nil else { return }
         progress = 0
         error = nil
         Task {
             do {
-                try await ParakeetEngine.prepare(at: directory) { value in
+                try await ParakeetEngine.prepare(model) { value in
                     Task { @MainActor in
                         if ParakeetLoader.shared.progress != nil { ParakeetLoader.shared.progress = value }
                     }

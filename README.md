@@ -40,7 +40,7 @@
 ## Highlights
 
 - **One prompt from voice and pictures.** Screenshots, copied text and files land in the transcript exactly where you mentioned them, as `[figure N]`, `[clip N]` and `[file N]`.
-- **Private by default.** NVIDIA Parakeet runs on the Neural Engine. A minute of speech takes about a second, and nothing leaves your Mac.
+- **Private by default.** Parakeet Ultra runs on the Neural Engine. A minute of speech takes about a second, and nothing leaves your Mac.
 - **Pastes the right thing.** Terminals and coding agents get markdown with absolute image paths; every other app gets real images followed by the text.
 - **Stays out of the way.** A small pill at the bottom of the screen, global hotkeys, tap or hold to talk, and `Esc` to throw it away.
 - **Expressive or Minimal.** A warm glow, flying captures and soft sounds, or white bars and quiet fades. You choose in Settings.
@@ -54,7 +54,7 @@
    - **Microphone**: recording.
    - **Accessibility**: pasting with ⌘V into other apps. Without it, the prompt is only copied.
    - **Screen Recording**: Tack's screenshot hotkeys.
-4. In *Settings → Transcription*, click *Download* to fetch the Parakeet model (about 470 MB, once).
+4. In *Settings → Transcription*, click *Download* to fetch the Parakeet Ultra model (about 630 MB, once).
 
 Requires macOS 14 or later on Apple Silicon. Releases are signed with a Developer ID and notarized by Apple. Tack checks GitHub Releases for a new version once a day, and on demand from *Check for Updates…* in its menu.
 
@@ -128,12 +128,13 @@ Screenshots taken outside a recording go to the history. macOS's own screenshots
 
 ### Parakeet (local, default)
 
-- On first launch Tack opens *Settings → Transcription*; click *Download* (about 470 MB, saved to `~/.tack/models/parakeet-tdt-0.6b-v3/`). After that nothing leaves your Mac.
-- Runs NVIDIA Parakeet TDT 0.6b v3 on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). A minute of speech takes about a second. The first transcription after a launch can take a few seconds more while CoreML loads the model.
+- On first launch Tack opens *Settings → Transcription*; click *Download* (about 630 MB, saved to `~/.tack/models/parakeet-ultra/`). After that nothing leaves your Mac.
+- Runs [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), moondream's post-training of NVIDIA Parakeet TDT 0.6b v3, on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). It makes fewer mistakes than v3 in every language at the same speed. A minute of speech takes about a second. The first transcription after a launch can take a few seconds more while CoreML loads the model.
 - Detects the language on its own across 25 European languages, including Polish. Choosing a language only keeps it from writing in another alphabet.
 - Transcribes the whole recording in one pass and places markers using word timestamps.
 - *Show live transcript in the pill* (on by default) shows the last words you said while recording.
 - Vocabulary hints are not used.
+- Installs from before Ultra keep transcribing with v3 until you download Ultra in *Settings → Transcription*; the next launch deletes v3.
 
 ### OpenRouter (cloud)
 
@@ -270,7 +271,7 @@ With a Developer ID identity, `build-app.sh` signs with a secure timestamp and `
 
 ## Credits
 
-- Speech recognition: NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), run through [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0).
+- Speech recognition: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by moondream, based on NVIDIA Parakeet TDT 0.6b v3 (both CC-BY-4.0), run through [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0).
 
 ## License
 

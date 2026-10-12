@@ -32,8 +32,10 @@ public struct TackPaths: Sendable {
     public var models: URL { root.appendingPathComponent("models", isDirectory: true) }
     public var latestLink: URL { root.appendingPathComponent("latest") }
 
-    /// FluidAudio expects the directory to end in the model repo's folder name.
-    public var parakeetModels: URL { models.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true) }
+    /// FluidAudio expects each directory to end in the model repo's folder name.
+    public var parakeetModels: URL { models.appendingPathComponent("parakeet-ultra", isDirectory: true) }
+    /// The model Tack 0.2 and earlier downloaded. Transcribes until Ultra is downloaded, then gets deleted.
+    public var parakeetV3Models: URL { models.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true) }
 
     public func ensureDirectories() throws {
         for dir in [root, clips, sessions, models] {

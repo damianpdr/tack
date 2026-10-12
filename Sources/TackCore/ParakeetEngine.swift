@@ -1,30 +1,51 @@
 import FluidAudio
 import Foundation
 
-/// NVIDIA Parakeet TDT 0.6b v3 on CoreML via FluidAudio. Runs one pass over the recording with token timings.
+/// A Parakeet build on disk. Tack downloads Ultra, moondream's post-training of NVIDIA Parakeet TDT 0.6b v3: same
+/// languages and speed, fewer errors. Installs from before Ultra keep v3 until Ultra is downloaded.
+public struct ParakeetModel: Sendable, Equatable {
+    public let name: String
+    public let directory: URL
+    let version: AsrModelVersion
+
+    public static func ultra(_ paths: TackPaths) -> ParakeetModel {
+        ParakeetModel(name: "ultra", directory: paths.parakeetModels, version: .ultra)
+    }
+
+    public static func v3(_ paths: TackPaths) -> ParakeetModel {
+        ParakeetModel(name: "tdt-0.6b-v3", directory: paths.parakeetV3Models, version: .v3)
+    }
+
+    /// The model to transcribe with: Ultra once it is downloaded, else v3 if an older Tack downloaded it.
+    public static func installed(_ paths: TackPaths) -> ParakeetModel? {
+        [ultra(paths), v3(paths)].first(where: \.isDownloaded)
+    }
+
+    public var isDownloaded: Bool {
+        AsrModels.modelsExist(at: directory, version: version)
+    }
+}
+
+/// Parakeet on CoreML via FluidAudio. Runs one pass over the recording with token timings.
 public struct ParakeetEngine: TimedTranscriptionEngine {
-    public let modelDirectory: URL
+    public let model: ParakeetModel
 
-    public init(modelDirectory: URL) {
-        self.modelDirectory = modelDirectory
+    public init(model: ParakeetModel) {
+        self.model = model
     }
 
-    public var displayName: String { "Parakeet · tdt-0.6b-v3" }
-
-    public static func isDownloaded(at directory: URL) -> Bool {
-        AsrModels.modelsExist(at: directory, version: .v3)
-    }
+    public var displayName: String { "Parakeet · \(model.name)" }
 
     /// Downloads (if needed) and compiles the models. `progress` gets a rough 0…1 across the model files.
     public static func prepare(
-        at directory: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }
+        _ model: ParakeetModel, progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
-        _ = try await ParakeetRuntime.shared.manager(directory: directory, progress: progress)
+        _ = try await ParakeetRuntime.shared.manager(model, progress: progress)
     }
 
     /// Timed words for raw 16 kHz samples, used for the live preview while recording. Times are from the first sample.
-    public static func previewWords(samples: [Float], directory: URL, language: String?) async throws -> [TimedWord] {
-        let manager = try await ParakeetRuntime.shared.manager(directory: directory)
+    public static func previewWords(samples: [Float], model: ParakeetModel, language: String?) async throws -> [TimedWord] {
+        let manager = try await ParakeetRuntime.shared.manager(model)
         let hint = language.flatMap { Language(rawValue: $0.lowercased()) }
         let result = try await run(manager, samples: samples, language: hint)
         guard let timings = result.tokenTimings, !timings.isEmpty else {
@@ -48,7 +69,7 @@ public struct ParakeetEngine: TimedTranscriptionEngine {
     }
 
     public func transcribeTimed(_ audio: URL, language: String?) async throws -> [TimedWord] {
-        let manager = try await ParakeetRuntime.shared.manager(directory: modelDirectory)
+        let manager = try await ParakeetRuntime.shared.manager(model)
         let samples = try AudioConverter().resampleAudioFile(path: audio.path)
         guard !samples.isEmpty else { return [] }
         let hint = language.flatMap { Language(rawValue: $0.lowercased()) }
@@ -66,10 +87,11 @@ public struct ParakeetEngine: TimedTranscriptionEngine {
         return try await manager.transcribe(samples, decoderState: &state, language: language)
     }
 
-    /// Joins SentencePiece pieces into words; FluidAudio marks word starts with a leading space.
+    /// Joins SentencePiece pieces into words; FluidAudio marks word starts with a leading space. Drops `<unk>`, which
+    /// Ultra emitted once in our 200 minutes of test recordings.
     static func words(from tokens: [(text: String, start: TimeInterval, end: TimeInterval)]) -> [TimedWord] {
         var words: [TimedWord] = []
-        for token in tokens where !token.text.isEmpty {
+        for token in tokens where !token.text.isEmpty && token.text.trimmingCharacters(in: .whitespaces) != "<unk>" {
             if token.text.hasPrefix(" ") || words.isEmpty {
                 let text = token.text.hasPrefix(" ") ? token.text : " " + token.text
                 words.append(TimedWord(text: text, start: token.start, end: token.end))
@@ -86,18 +108,19 @@ public struct ParakeetEngine: TimedTranscriptionEngine {
 actor ParakeetRuntime {
     static let shared = ParakeetRuntime()
 
-    private var loaded: (directory: URL, manager: AsrManager)?
-    private var loading: Task<AsrManager, Error>?
+    private var loaded: (model: ParakeetModel, manager: AsrManager)?
+    /// Keyed by model, so a recording made with v3 while Ultra downloads does not wait for the download.
+    private var loading: (model: ParakeetModel, task: Task<AsrManager, Error>)?
 
     func manager(
-        directory: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }
+        _ model: ParakeetModel, progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> AsrManager {
-        if let loaded, loaded.directory == directory { return loaded.manager }
-        if let loading { return try await loading.value }
+        if let loaded, loaded.model == model { return loaded.manager }
+        if let loading, loading.model == model { return try await loading.task.value }
         let task = Task {
             let files = FileCounter()
             let models = try await AsrModels.downloadAndLoad(
-                to: directory, version: .v3,
+                to: model.directory, version: model.version,
                 progressHandler: { update in
                     if case .downloading = update.phase {
                         progress(files.fraction(update.fractionCompleted))
@@ -107,16 +130,16 @@ actor ParakeetRuntime {
             try await manager.loadModels(models)
             return manager
         }
-        loading = task
-        defer { loading = nil }
+        loading = (model, task)
+        defer { if loading?.model == model { loading = nil } }
         let manager = try await task.value
-        loaded = (directory, manager)
+        loaded = (model, manager)
         progress(1)
         return manager
     }
 }
 
-/// FluidAudio reports progress per file, restarting at 0 for each; this turns that into one bar over the four v3 files.
+/// FluidAudio reports progress per file, restarting at 0 for each; this turns that into one bar over the four model files.
 private final class FileCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var completed = 0

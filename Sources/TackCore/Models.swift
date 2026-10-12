@@ -46,7 +46,7 @@ public enum EngineKind: String, Codable, CaseIterable, Sendable {
     public var subtitle: String {
         switch self {
         case .openRouter: "Any OpenRouter transcription model. Needs an API key; audio leaves your Mac."
-        case .parakeet: "NVIDIA Parakeet v3 on the Neural Engine. Fast, private, 25 European languages."
+        case .parakeet: "Parakeet Ultra on the Neural Engine. Fast, private, 25 European languages."
         }
     }
 

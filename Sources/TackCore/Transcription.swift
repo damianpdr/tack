@@ -189,10 +189,10 @@ public enum Transcriber {
                 apiKey: key, model: model.isEmpty ? Settings().openRouterModel : model,
                 vocabulary: settings.vocabulary)
         case .parakeet:
-            guard ParakeetEngine.isDownloaded(at: paths.parakeetModels) else {
+            guard let model = ParakeetModel.installed(paths) else {
                 throw TranscriptionError.missingParakeetModel
             }
-            return ParakeetEngine(modelDirectory: paths.parakeetModels)
+            return ParakeetEngine(model: model)
         }
     }
 

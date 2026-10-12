@@ -116,9 +116,14 @@ final class AppModel {
             ingest(item, dedupe: false, captureAt: offset, from: .screenshotThumbnail)
         }
 
+        // Ultra replaces v3. Nothing has loaded a model yet, so v3 can go now.
+        if ParakeetModel.ultra(paths).isDownloaded {
+            try? FileManager.default.removeItem(at: paths.parakeetV3Models)
+        }
+
         if !Permissions.allGranted {
             showSettings(tab: .permissions)
-        } else if settings.engine == .parakeet, !ParakeetEngine.isDownloaded(at: paths.parakeetModels) {
+        } else if settings.engine == .parakeet, ParakeetModel.installed(paths) == nil {
             showSettings(tab: .transcription)
         }
     }
@@ -237,8 +242,7 @@ final class AppModel {
 
     /// Re-transcribes the last few seconds with Parakeet about once a second. Never triggers the model download.
     private func startLivePreview() {
-        let directory = paths.parakeetModels
-        guard settings.livePreview, settings.engine == .parakeet, ParakeetEngine.isDownloaded(at: directory) else { return }
+        guard settings.livePreview, settings.engine == .parakeet, let parakeet = ParakeetModel.installed(paths) else { return }
         let language = settings.language
         livePreviewTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -246,7 +250,7 @@ final class AppModel {
                 guard let self, phase == .recording else { return }
                 let window = recorder.recentSamples(seconds: 8)
                 guard window.samples.count >= Int(PCMAudio.sampleRate) else { continue }
-                guard let words = try? await ParakeetEngine.previewWords(samples: window.samples, directory: directory, language: language),
+                guard let words = try? await ParakeetEngine.previewWords(samples: window.samples, model: parakeet, language: language),
                       !Task.isCancelled, phase == .recording
                 else { continue }
                 live.update(recognized: words, windowStart: window.start)
