@@ -192,7 +192,6 @@ models/                              the downloaded Parakeet model
 ## Known limitations
 
 - A macOS screenshot whose floating thumbnail is still on screen when you stop recording is not included. Stop after the thumbnail disappears, or turn the thumbnail off in ⌘⇧5 → Options.
-- Changing the input device in the middle of a recording ends the recording.
 - The pill ignores clicks while a recording is being transcribed.
 
 ## Development

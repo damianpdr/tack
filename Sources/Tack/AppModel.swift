@@ -97,6 +97,12 @@ final class AppModel {
         registerHotkeys()
 
         recorder.onLevel = { [weak self] level in self?.pushLevel(level) }
+        // No microphone left to switch to: keep what was said so far rather than recording silence.
+        recorder.onInputLost = { [weak self] error in
+            guard let self, phase == .recording else { return }
+            stopRecording()
+            lastError = "The microphone went away, so the recording stopped early: \(error.localizedDescription)"
+        }
 
         // The clipboard is only watched while recording, so copies made outside a recording never land in History.
         clipboard.onItem = { [weak self] item in
