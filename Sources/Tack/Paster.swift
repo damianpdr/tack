@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import TackCore
 
 @MainActor
@@ -48,20 +49,20 @@ final class Paster {
 
         let agent = target.bundleIdentifier.map(Self.agentBundleIDs.contains) ?? false
         if agent || settings.pasteMode == .textOnly {
-            Clipboard.writeText(loneImage ?? prompt.markdown)
+            Clipboard.writeText(loneImage ?? prompt.markdown, transient: true)
             Self.postCommandV()
         } else if let loneImage {
-            Clipboard.writeImage(path: loneImage, includeFileURL: false)
+            Clipboard.writeImage(path: loneImage, includeFileURL: false, transient: true)
             Self.postCommandV()
         } else {
             for (index, figure) in prompt.figures.enumerated() {
                 if index > 0 { try? await Task.sleep(for: .milliseconds(250)) }
-                Clipboard.writeImage(path: figure, includeFileURL: false)
+                Clipboard.writeImage(path: figure, includeFileURL: false, transient: true)
                 Self.postCommandV()
             }
             if !prompt.richText.isEmpty {
                 if !prompt.figures.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
-                Clipboard.writeText(prompt.richText)
+                Clipboard.writeText(prompt.richText, transient: true)
                 Self.postCommandV()
             }
         }
@@ -90,11 +91,43 @@ final class Paster {
 
     private static func postCommandV() {
         let source = CGEventSource(stateID: .combinedSessionState)
-        let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)
+        let key = commandVKeyCode()
+        let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
+    }
+
+    /// The key that types "v" with ⌘ held in the current layout: 9 on QWERTY, another key on Dvorak. Translating with
+    /// ⌘ held also covers layouts like "Dvorak – QWERTY ⌘" that turn into QWERTY under ⌘. Layouts without a "v", like
+    /// Russian, fall back to the ASCII-capable layout macOS uses for shortcuts.
+    static func commandVKeyCode() -> CGKeyCode {
+        let sources = [TISCopyCurrentKeyboardLayoutInputSource(), TISCopyCurrentASCIICapableKeyboardLayoutInputSource()]
+        for source in sources.compactMap({ $0?.takeRetainedValue() }) {
+            if let code = keyCode(typing: "v", in: source) { return code }
+        }
+        return CGKeyCode(kVK_ANSI_V)
+    }
+
+    private static func keyCode(typing character: Character, in source: TISInputSource) -> CGKeyCode? {
+        guard let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+        return data.withUnsafeBytes { bytes -> CGKeyCode? in
+            guard let layout = bytes.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return nil }
+            for code in 0..<UInt16(128) {
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                let status = UCKeyTranslate(
+                    layout, code, UInt16(kUCKeyActionDown), UInt32((cmdKey >> 8) & 0xFF), UInt32(LMGetKbdType()),
+                    OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeys, chars.count, &length, &chars)
+                if status == noErr, length == 1, Character(String(utf16CodeUnits: chars, count: 1)).lowercased() == String(character) {
+                    return CGKeyCode(code)
+                }
+            }
+            return nil
+        }
     }
 }

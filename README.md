@@ -120,7 +120,7 @@ How the paste depends on the frontmost app:
 | Any other app | Each image as a picture, then the text with `[figure N]` markers but no path lines |
 | Any app, with *Paste mode → Text only* | The markdown above |
 
-Tack always leaves the markdown on the clipboard afterwards. Agents can also read the latest prompt directly:
+Tack always leaves the markdown on the clipboard afterwards. The images and text it puts on the clipboard only to paste them are marked as transient, so clipboard managers keep just that final markdown. Agents can also read the latest prompt directly:
 
 ```sh
 cat ~/.tack/latest/prompt.md
