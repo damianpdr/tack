@@ -207,6 +207,7 @@ final class AppModel {
                 return
             }
             preloadParakeet()
+            recorder.microphoneUID = settings.microphone?.uid
             do {
                 try recorder.start()
             } catch {

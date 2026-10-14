@@ -14,9 +14,9 @@ enum AudioRecorderError: LocalizedError {
     }
 }
 
-/// Captures the default input as 16 kHz mono Float32 in memory. When the input changes mid-recording (AirPods
-/// connecting, a USB mic unplugged), it moves to the new default input and keeps appending to the same samples.
-/// Samples arrive on the audio render thread; everything else is main-thread.
+/// Captures the chosen microphone, or the default input, as 16 kHz mono Float32 in memory. When the input changes
+/// mid-recording (AirPods connecting, a USB mic unplugged), it moves to the new input and keeps appending to the same
+/// samples. Samples arrive on the audio render thread; everything else is main-thread.
 final class AudioRecorder: @unchecked Sendable {
     /// Called on the main thread about 30 times per second while recording, level 0...1.
     var onLevel: ((Float) -> Void)?
@@ -24,14 +24,19 @@ final class AudioRecorder: @unchecked Sendable {
     /// so far are kept until `stop()`.
     var onInputLost: ((Error) -> Void)?
     private(set) var startDate: Date?
+    /// Core Audio UID of the microphone to record from while it is connected; nil, or unplugged, uses the default
+    /// input. Read when recording starts and whenever the inputs change.
+    var microphoneUID: String?
 
     private static let levelWindow = Int(PCMAudio.sampleRate / 30)
     /// Bluetooth inputs take a moment to settle after a switch, so a failed restart is tried again a few times.
     private static let restartAttempts = 4
 
     private var engine: AVAudioEngine?
+    /// The device the running engine records from.
+    private var boundDevice: AudioDeviceID?
     private var configurationObserver: NSObjectProtocol?
-    private var defaultInputListener: AudioObjectPropertyListenerBlock?
+    private var inputListener: AudioObjectPropertyListenerBlock?
     private var restartScheduled = false
     private let lock = NSLock()
     private var samples: [Float] = []
@@ -84,12 +89,28 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    /// A new engine binds to the current default input in its current format; an engine keeps the device it started
-    /// on, and stops for good when that device goes away or changes format.
+    /// The chosen microphone while it is connected, else the default input.
+    private func targetDevice() -> AudioDeviceID? {
+        microphoneUID.flatMap(AudioInputs.device(uid:)) ?? AudioInputs.defaultInput()
+    }
+
+    /// A new engine binds to the target device in its current format; an engine keeps the device it started on, and
+    /// stops for good when that device goes away or changes format.
     private func startEngine() throws {
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
+        let device = targetDevice()
+        // Pinned even when it is the default, so the engine never follows a new default on its own.
+        if var device {
+            guard let unit = input.audioUnit else { throw AudioRecorderError.noInputDevice }
+            let status = AudioUnitSetProperty(
+                unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device,
+                UInt32(MemoryLayout<AudioDeviceID>.size))
+            guard status == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        }
+        // The device's own format: after pinning, `outputFormat` can still carry the previous device's sample rate, and
+        // a tap in that format receives nothing.
+        let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else { throw AudioRecorderError.noInputDevice }
         guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: PCMAudio.sampleRate, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: inputFormat, to: outputFormat)
@@ -107,6 +128,7 @@ final class AudioRecorder: @unchecked Sendable {
             throw error
         }
         self.engine = engine
+        boundDevice = device
     }
 
     private func stopEngine() {
@@ -114,37 +136,48 @@ final class AudioRecorder: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.engine = nil
+        boundDevice = nil
     }
 
     // MARK: Input changes
 
-    private static let defaultInputAddress = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDefaultInputDevice,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-    )
+    /// Listened to on the system object: a new default input, and devices plugged in or out.
+    private static let inputAddresses = [AudioInputs.defaultInputAddress, AudioInputs.devicesAddress]
 
     private func observeInputChanges() {
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main
         ) { [weak self] notification in
-            guard let self, let engine, notification.object as AnyObject === engine else { return }
+            // Pinning the input posts one of these right after the start while the engine keeps running; a real
+            // change (the device gone, a new format) stops the engine.
+            guard let self, let engine, notification.object as AnyObject === engine,
+                  !engine.isRunning || targetDevice() != boundDevice
+            else { return }
             scheduleRestart(attempt: 1)
         }
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.scheduleRestart(attempt: 1) }
-        var address = Self.defaultInputAddress
-        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
-        defaultInputListener = listener
+        // Only a change of target matters here: AirPods connecting while the built-in mic is chosen leave it alone,
+        // and the chosen mic plugged back in takes over from the default.
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self, targetDevice() != boundDevice else { return }
+            scheduleRestart(attempt: 1)
+        }
+        for address in Self.inputAddresses {
+            var address = address
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        }
+        inputListener = listener
     }
 
     private func stopObservingInputChanges() {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
         configurationObserver = nil
-        if let defaultInputListener {
-            var address = Self.defaultInputAddress
-            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, defaultInputListener)
+        if let inputListener {
+            for address in Self.inputAddresses {
+                var address = address
+                AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, inputListener)
+            }
         }
-        defaultInputListener = nil
+        inputListener = nil
     }
 
     /// A switch fires several notifications in a row; they collapse into one restart once the burst is over.

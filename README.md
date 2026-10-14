@@ -66,6 +66,8 @@ Requires macOS 14 or later on Apple Silicon. Releases are signed with a Develope
 
 Or hold `⌃⌥R` while you talk and let go to finish; the pill gets a warm rim while you hold. `Esc` or the pill's `×` cancels the recording and discards it.
 
+Tack records from the macOS default input, which switches to AirPods as soon as they connect and lowers their sound quality while they record. To keep using another microphone, pick it in *Settings → General → Recording → Microphone*. While it is unplugged, Tack records from the default input.
+
 ### Pointing
 
 Turn on *Settings → General → While recording → Point at things with Control + Option + click* (off by default). While recording, hold Control + Option and click anything on screen: "make this smaller", click, "and this should use the accent colour", click. Each click adds the window under the pointer as a figure, with what you clicked outlined in red, and names it after the figure's path:

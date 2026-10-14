@@ -80,6 +80,18 @@ public enum PillStyle: String, Codable, CaseIterable, Sendable {
     case minimal
 }
 
+/// An input device, kept by its Core Audio UID, which survives reconnects and reboots, and by name, for showing it
+/// while it is unplugged.
+public struct Microphone: Codable, Hashable, Sendable {
+    public var uid: String
+    public var name: String
+
+    public init(uid: String, name: String) {
+        self.uid = uid
+        self.name = name
+    }
+}
+
 public struct Settings: Codable, Equatable, Sendable {
     /// Everything on ⌃⌥, which types no characters (not even Polish ⌥ letters) and is free in Rectangle/Magnet:
     /// ⌃⌥R record, ⌃⌥4 region and ⌃⌥3 screen like macOS's ⌘⇧4/⌘⇧3, ⌃⌥V history like a clipboard manager.
@@ -116,6 +128,9 @@ public struct Settings: Codable, Equatable, Sendable {
     public var maxFigureDimension: Int = 2048
     /// Parakeet only: show the last words in the pill while recording.
     public var livePreview: Bool = true
+    /// Recorded from even when macOS's default input moves, e.g. to AirPods as they connect; nil follows the default.
+    /// While it is unplugged, recordings use the default input.
+    public var microphone: Microphone?
 
     public init() {}
 
@@ -142,6 +157,7 @@ public struct Settings: Codable, Equatable, Sendable {
         vocabulary = try c.decodeIfPresent([String].self, forKey: .vocabulary) ?? d.vocabulary
         maxFigureDimension = try c.decodeIfPresent(Int.self, forKey: .maxFigureDimension) ?? d.maxFigureDimension
         livePreview = try c.decodeIfPresent(Bool.self, forKey: .livePreview) ?? d.livePreview
+        microphone = try? c.decodeIfPresent(Microphone.self, forKey: .microphone)
     }
 
     /// Splits free text on newlines and commas, dropping blanks and case-insensitive duplicates.

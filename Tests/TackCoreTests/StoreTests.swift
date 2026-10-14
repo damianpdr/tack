@@ -36,6 +36,7 @@ struct SettingsStoreTests {
         settings.openRouterAPIKey = "sk-or-test"
         settings.pillStyle = .minimal
         settings.hotkeys[.showHistory] = KeyCombo(keyCode: 9, modifiers: KeyCombo.control)
+        settings.microphone = Microphone(uid: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone")
         try store.save(settings)
         #expect(store.load() == settings)
         let attributes = try FileManager.default.attributesOfItem(atPath: paths.settingsFile.path)

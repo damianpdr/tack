@@ -41,6 +41,7 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @Bindable var model: AppModel
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var inputs = AudioInputList()
 
     var body: some View {
         Form {
@@ -84,6 +85,22 @@ private struct GeneralSettings: View {
             } footer: {
                 SettingsFootnote("Minimal drops the glow, and nothing flies in or out. Picking it turns sounds off; you can turn them back on.")
             }
+            Section {
+                Picker("Microphone", selection: microphoneSelection) {
+                    Text(inputs.defaultName.map { "System default (\($0))" } ?? "System default").tag("")
+                    if !inputs.devices.isEmpty { Divider() }
+                    ForEach(inputs.devices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                    if let saved = model.settings.microphone, !inputs.devices.contains(where: { $0.uid == saved.uid }) {
+                        Text("\(saved.name) (not connected)").tag(saved.uid)
+                    }
+                }
+            } header: {
+                Text("Recording")
+            } footer: {
+                SettingsFootnote("The system default switches to AirPods as soon as they connect, and recording through them lowers their sound quality. Pick the built-in microphone to keep using it. While the chosen one is unplugged, Tack records from the system default.")
+            }
             Section("Pasting") {
                 Toggle("Paste automatically into the frontmost app", isOn: $model.settings.autoPaste)
                 Picker("Paste mode", selection: $model.settings.pasteMode) {
@@ -126,7 +143,22 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { launchAtLogin = LaunchAtLogin.isEnabled }
+        .onAppear {
+            launchAtLogin = LaunchAtLogin.isEnabled
+            inputs.start()
+        }
+        .onDisappear { inputs.stop() }
+    }
+
+    /// The chosen microphone's UID, "" for the system default.
+    private var microphoneSelection: Binding<String> {
+        Binding(
+            get: { model.settings.microphone?.uid ?? "" },
+            set: { uid in
+                guard uid != model.settings.microphone?.uid else { return }
+                model.settings.microphone = inputs.devices.first { $0.uid == uid }.map { Microphone(uid: $0.uid, name: $0.name) }
+            }
+        )
     }
 
     private var failedTitles: String {
