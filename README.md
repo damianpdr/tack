@@ -144,7 +144,7 @@ Screenshots taken outside a recording go to the history. macOS's own screenshots
 ### Parakeet (local, default)
 
 - On first launch Tack opens *Settings → Transcription*; click *Download* (about 630 MB, saved to `~/.tack/models/parakeet-ultra/`). After that nothing leaves your Mac.
-- Runs [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), moondream's post-training of NVIDIA Parakeet TDT 0.6b v3, on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). It makes fewer mistakes than v3 in every language at the same speed. A minute of speech takes about a second. The first transcription after a launch can take a few seconds more while CoreML loads the model.
+- Runs [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), moondream's post-training of NVIDIA Parakeet TDT 0.6b v3, on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). It makes fewer mistakes than v3 in every language at the same speed. A minute of speech takes about a second. Tack loads the model in the background when it launches; the first load after an install or update compiles it for the Neural Engine, which can take about 10 seconds.
 - Detects the language on its own across 25 European languages, including Polish. Choosing a language only keeps it from writing in another alphabet.
 - Transcribes the whole recording in one pass and places markers using word timestamps.
 - *Show live transcript in the pill* (on by default) shows the last words you said while recording.

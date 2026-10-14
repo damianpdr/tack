@@ -25,6 +25,7 @@ final class AppModel {
             if settings.hotkeys != oldValue.hotkeys { registerHotkeys() }
             if settings.showInDock != oldValue.showInDock { applyActivationPolicy() }
             if settings.pointWhileRecording != oldValue.pointWhileRecording { syncPointerTap() }
+            if settings.engine != oldValue.engine { preloadParakeet() }
             if settings.historyLimit != oldValue.historyLimit {
                 store.prune(keepingNewest: max(1, settings.historyLimit))
                 reloadHistory()
@@ -125,6 +126,8 @@ final class AppModel {
             try? FileManager.default.removeItem(at: paths.parakeetV3Models)
         }
 
+        preloadParakeet()
+
         if !Permissions.allGranted {
             showSettings(tab: .permissions)
         } else if settings.engine == .parakeet, ParakeetModel.installed(paths) == nil {
@@ -203,6 +206,7 @@ final class AppModel {
                 fail("Could not create session folder: \(error.localizedDescription)")
                 return
             }
+            preloadParakeet()
             do {
                 try recorder.start()
             } catch {
@@ -245,6 +249,13 @@ final class AppModel {
         let events = captures.sorted { $0.offset < $1.offset }
         let settings = settings
         Task { await process(audio: audio, events: events, dir: dir, settings: settings) }
+    }
+
+    /// Loads Parakeet in the background, so the first recording after a launch neither waits for CoreML to load when it
+    /// stops nor shows its live transcript late. Returns at once when the model is already loaded; never downloads.
+    private func preloadParakeet() {
+        guard settings.engine == .parakeet, let model = ParakeetModel.installed(paths) else { return }
+        Task.detached(priority: .utility) { try? await ParakeetEngine.prepare(model) }
     }
 
     /// Re-transcribes the last few seconds with Parakeet about once a second. Never triggers the model download.
